@@ -70,13 +70,19 @@ The ultimate goal of this work is to find a configuration of an adversarial mach
 The repo is structured as follows:
  - the _data_ folder contains all used data. Inside are subfolders defined by file extensions. In the _csv_ subfolder are the data sample from Propublica for both predicting recidives and violent recidives (compas-scores-two-years*.csv). Other files are "sanitized" versions with some of the columns removed (because considered useless are not used at all by Propublica). Two files can be found one keeping age as values (integers) and one containing age category as defined in the Propublica study. The _arff_ folder contains the transformed version of "sanitized" data into the arff format which is used by Weka, a library containing various machine learning algorithms. Weka is only used as a preliminary study in order to try to answer the first challenge. Then, we plan to use scikit-learn and the Python language. Again, in this sub-folder, we multiplied the files by removing some columns regarding the prediction of COMPAS (one file contains the score between 1 and 10, another one  contains the risk categories: "Low", "Medium" and "High") or the actual groundtruth. Note that one file should exist for each combination of cases (prediction class *AND* age category or value).
 
- - the _script_ folder contains python scripts that we use to conduct our experiments.
+ - the _script_ folder contains python scripts that we use to conduct our experiments. Mainly 2 scripts can be found there: the script_factory_classifier.py which is in charge of creating the classifier Python objects out of scikit-learn module and return them to the main script called script_eval_perf_classif_age_category_decil_score.py. This last script is (for now) specific to the input file data/csv/scikit/compas_recidive_two_years_sanitize_age_category_jail_time_decile_score.csv and exeute different ML algorithms parameterized differently and reports results.
 
  - the _results_ folder provides evidence which had lead us to our conclusions.
 
 
 ## TODO
-- adapt all scripts to their particular contexts: depending on the target class (decile score, text score or Propublica groundtruth of recidive) and to ML parameterization
+
+- modify the main script to make it parameterizable in regards of the input file
+
+- limit the convergence time of ML training process (setting a number of iterations?) to avoid infinite loop and waste of time
+
+<!--- adapt all scripts to their particular contexts: depending on the target class (decile score, text score or Propublica groundtruth of recidive) and to ML parameterization
+-->
 
 - try different ML algorithms: which ones? Decision Trees, SVM, Bayesian classifier, forests? etc.
 
