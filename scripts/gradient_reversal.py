@@ -1,10 +1,15 @@
-import tensorflow as tf
+import pandas as pd
+import os
+import numpy as np
 
 from keras import losses
 from keras.layers import Input, Embedding, Dense, Dropout, Flatten
 from keras.models import Model
 from keras.engine import Layer
 import keras.backend as K
+
+import tensorflow as tf
+
 
 def reverse_gradient(X, hp_lambda):
     """Flips the sign of the gradient during training."""
@@ -75,12 +80,12 @@ class GradientReversalModel:
 
         return self.model.predict(X)
 
-    def __init__(self, hp_lambda: int, input_shape: int):
+    def define_model(self, hp_lambda: int):
         """
         Creates a model in with a lambda value that's provided by the caller.
         """
 
-        input = Input(batch_shape=(None, input_shape), name="input")
+        input = Input(batch_shape=(None, 11), name="input")
 
         x = Dense(64, activation="relu")(input)
         x = Dropout(0.1)(x)
