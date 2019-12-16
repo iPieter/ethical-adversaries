@@ -13,7 +13,7 @@ del df_binary['c_jail_out']
 
 ##separated class from the rests of the features
 #remove unnecessary dimensions from Y -> only the decile_score remains
-Y = df_binary['decile_score']
+Y_to_remove = df_binary['decile_score']
 del df_binary['decile_score']
 del df_binary['two_year_recid']
 del df_binary['score_text']
@@ -21,29 +21,123 @@ del df_binary['score_text']
 S = df_binary['race']
 del df_binary['race']
 
-encod = preprocessing.OrdinalEncoder()
-encod.fit(df_binary)
-X = encod.transform(df_binary)
-X = pd.DataFrame(X)
-X.columns = df_binary.columns
-X.head()
+#del X[nb_feat-1]
+Y = df_binary['is_recid']
+df_binary.drop(columns='is_recid',inplace = True)
+print(df_binary.head())
 
-X_train, X_test, Y_train, Y_test = train_test_split( X, Y, test_size=0.3, random_state=42)
+#set sparse to False to return dense matrix after transformation and keep all dimensions homogeneous
+encod = preprocessing.OneHotEncoder(sparse=False)
+
+data_to_encode = df_binary.to_numpy()
+feat_to_encode = data_to_encode[:,0]
+#print(feat_to_encode)
+#transposition
+feat_to_encode=feat_to_encode.reshape(-1, 1)
+#print(feat_to_encode)
+encoded_feature=encod.fit_transform(feat_to_encode)
+
+df_binary_encoded = pd.DataFrame(encoded_feature)
+
+df_binary_encoded.head()
+
+
+feat_to_encode = data_to_encode[:,1]
+feat_to_encode=feat_to_encode.reshape(-1, 1)
+encoded_feature=encod.fit_transform(feat_to_encode)
+
+df_encoded_feature = pd.DataFrame(encoded_feature)
+
+df_binary_encoded = pd.concat([df_binary_encoded,pd.DataFrame(encoded_feature)],axis=1)
+
+#feature [2] [3] [4] [5] [6] [7] [8] has to be put between 0 and 1
+
+encoded_feature = data_to_encode[:,2]
+ma = np.amax(encoded_feature)
+mi = np.amin(encoded_feature)
+encoded_feature = (encoded_feature-mi)/(ma-mi)
+df_binary_encoded = pd.concat([df_binary_encoded,pd.DataFrame(encoded_feature)],axis=1)
+
+encoded_feature = data_to_encode[:,3]
+ma = np.amax(encoded_feature)
+mi = np.amin(encoded_feature)
+encoded_feature = (encoded_feature-mi)/(ma-mi)
+df_binary_encoded = pd.concat([df_binary_encoded,pd.DataFrame(encoded_feature)],axis=1)
+
+encoded_feature = data_to_encode[:,4]
+ma = np.amax(encoded_feature)
+mi = np.amin(encoded_feature)
+encoded_feature = (encoded_feature-mi)/(ma-mi)
+df_binary_encoded = pd.concat([df_binary_encoded,pd.DataFrame(encoded_feature)],axis=1)
+
+encoded_feature = data_to_encode[:,5]
+ma = np.amax(encoded_feature)
+mi = np.amin(encoded_feature)
+encoded_feature = (encoded_feature-mi)/(ma-mi)
+df_binary_encoded = pd.concat([df_binary_encoded,pd.DataFrame(encoded_feature)],axis=1)
+
+encoded_feature = data_to_encode[:,6]
+ma = np.amax(encoded_feature)
+mi = np.amin(encoded_feature)
+encoded_feature = (encoded_feature-mi)/(ma-mi)
+df_binary_encoded = pd.concat([df_binary_encoded,pd.DataFrame(encoded_feature)],axis=1)
+
+encoded_feature = data_to_encode[:,7]
+ma = np.amax(encoded_feature)
+mi = np.amin(encoded_feature)
+encoded_feature = (encoded_feature-mi)/(ma-mi)
+df_binary_encoded = pd.concat([df_binary_encoded,pd.DataFrame(encoded_feature)],axis=1)
+
+encoded_feature = data_to_encode[:,8]
+ma = np.amax(encoded_feature)
+mi = np.amin(encoded_feature)
+encoded_feature = (encoded_feature-mi)/(ma-mi)
+df_binary_encoded = pd.concat([df_binary_encoded,pd.DataFrame(encoded_feature)],axis=1)
+
+feat_to_encode = data_to_encode[:,9]
+feat_to_encode=feat_to_encode.reshape(-1, 1)
+encoded_feature=encod.fit_transform(feat_to_encode)
+
+df_encoded_feature = pd.DataFrame(encoded_feature)
+
+df_binary_encoded = pd.concat([df_binary_encoded,pd.DataFrame(encoded_feature)],axis=1)
+nb_feat = df_binary_encoded.shape[1]
+X = df_binary_encoded
+idx = list(range(nb_feat))
+str_idx = [str(i) for i in idx]
+X.columns=str_idx
 
 from secml.data import CDataset
-tr_set_secML = CDataset(X_train,Y_train)
-ts_set_secML = CDataset(X_test,Y_test)
+from secml.array import CArray
 
+#secML wants all dimensions to be homogeneous (we had previously float and int in X)
+data_set_encoded_secML = CArray(X.to_numpy(), dtype= float, copy=True) 
+data_set_encoded_secML = CDataset(data_set_encoded_secML,Y)
+
+n_tr = round(0.66 * X.shape[0])
+n_ts = X.shape[0]-n_tr
+
+print(X.shape)
+print(n_tr)
+print(n_ts)
+
+from secml.data.splitter import CTrainTestSplit
+splitter = CTrainTestSplit(train_size=n_tr, test_size=n_ts)
+tr_set_secML, ts_set_secML= splitter.split(data_set_encoded_secML)
+
+#tr_set_secML = CDataset(X_train,Y_train)
+#ts_set_secML = CDataset(X_test,Y_test)
+
+#Create a surrogate classifier
+
+# Creation of the multiclass classifier
 from secml.ml.classifiers import CClassifierSVM
 from secml.ml.classifiers.multiclass import CClassifierMulticlassOVA
-#from secml.ml.kernel import CKernelRBF
-#clf = CClassifierMulticlassOVA(CClassifierSVM, kernel=CKernelRBF())
-from secml.ml.kernel.c_kernel_poly import CKernelPoly
-clf = CClassifierMulticlassOVA(CClassifierSVM, kernel=CKernelPoly())
+from secml.ml.kernel import CKernelRBF
+clf = CClassifierMulticlassOVA(CClassifierSVM, kernel=CKernelRBF())
 
 # Parameters for the Cross-Validation procedure
-#xval_params = {'C': [1e-2, 0.1, 1], 'kernel.gamma': [10, 100, 1e3]}
-xval_params = {'C': [1e-4, 1e-3, 1e-2, 0.1, 1], 'kernel.gamma': [0.01, 0.1, 1, 10, 100, 1e3], 'kernel.degree': [2, 3, 5]}
+xval_params = {'C': [1e-4, 1e-3, 1e-2, 0.1, 1], 'kernel.gamma': [0.01, 0.1, 1, 10, 100, 1e3]}
 
 # Let's create a 3-Fold data splitter
 random_state = 999
@@ -62,6 +156,9 @@ best_params = clf.estimate_parameters(
 )
 print("The best training parameters are: ", best_params)
 
+print(clf.get_params())
+print(clf.num_classifiers)
+
 # Metric to use for training and performance evaluation
 from secml.ml.peval.metrics import CMetricAccuracy
 metric = CMetricAccuracy()
@@ -78,4 +175,57 @@ y_pred = clf.predict(ts_set_secML.X)
 acc = metric.performance_score(y_true=ts_set_secML.Y, y_pred=y_pred)
 
 print("Accuracy on test set: {:.2%}".format(acc))
+
+#Prepare attack configuration
+
+noise_type = 'l2'  # Type of perturbation 'l1' or 'l2'
+dmax = 0.4  # Maximum perturbation
+lb, ub = 0, 1  # Bounds of the attack space. Can be set to `None` for unbounded
+y_target = None  # None if `error-generic` or a class label for `error-specific`
+
+# Should be chosen depending on the optimization problem
+solver_params = {
+    'eta': 0.3,
+    'eta_min': 0.1,
+    'eta_max': None,
+    'max_iter': 100,
+    'eps': 1e-4
+}
+
+#Run attack
+
+from secml.adv.attacks.evasion import CAttackEvasionPGDLS
+pgd_ls_attack = CAttackEvasionPGDLS(
+    classifier=clf,
+    surrogate_classifier=clf,
+    surrogate_data=tr_set_secML,
+    distance=noise_type,
+    dmax=dmax,
+    lb=lb, ub=ub,
+    solver_params=solver_params,
+    y_target=y_target)
+
+
+nb_attack=25
+result_pts=np.empty([nb_attack,nb_feat])
+result_class=np.empty([nb_attack,1])
+
+#take a point at random being the starting point of the attack and run the attack
+import random
+for nb_iter in range(0,nb_attack-1):
+    rn = random.randint(0,ts_set_secML.num_samples)
+    x0,y0 = ts_set_secML[rn,:].X, ts_set_secML[rn,:].Y
+    
+    y_pred_pgdls, _, adv_ds_pgdls, _ = pgd_ls_attack.run(x0, y0)
+    
+    adv_pt = adv_ds_pgdls.X.get_data()
+    
+    #np.asarray([np.asarray(row, dtype=float) for row in y_tr], dtype=float)
+    result_pts[nb_iter] = adv_pt
+    result_class[nb_iter] = y_pred_pgdls.get_data()[0]
+    
+np.savetxt("../results/result_attack_pts.csv",np.concatenate((result_pts,result_class),axis=1),delimiter=',')
+
+#number of attack for which the classifier gives a different response than y0
+print(np.count_nonzero(result_class != y0))
 
