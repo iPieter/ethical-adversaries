@@ -3,6 +3,8 @@ import pandas as pd
 import os
 from sklearn import preprocessing
 
+import logging
+logger = logging.getLogger(__name__)
 
 def transform_dataset(df):
     """
@@ -94,9 +96,9 @@ def attack_keras_model(df, Y, S):
     n_tr = round(0.66 * X.shape[0])
     n_ts = X.shape[0] - n_tr
 
-    print(X.shape)
-    print(n_tr)
-    print(n_ts)
+    logger.debug(X.shape)
+    logger.debug(n_tr)
+    logger.debug(n_ts)
 
     from secml.data.splitter import CTrainTestSplit
     splitter = CTrainTestSplit(train_size=n_tr, test_size=n_ts)
@@ -123,7 +125,7 @@ def attack_keras_model(df, Y, S):
     xval_splitter = CDataSplitterKFold(num_folds=3, random_state=random_state)
 
     # Select and set the best training parameters for the classifier
-    print("Estimating the best training parameters...")
+    logger.debug("Estimating the best training parameters...")
     best_params = clf.estimate_parameters(
         dataset=tr_set_secML,
         parameters=xval_params,
@@ -131,10 +133,10 @@ def attack_keras_model(df, Y, S):
         metric='accuracy',
         perf_evaluator='xval'
     )
-    print("The best training parameters are: ", best_params)
+    logger.debug("The best training parameters are: ", best_params)
 
-    print(clf.get_params())
-    print(clf.num_classifiers)
+    logger.debug(clf.get_params())
+    logger.debug(clf.num_classifiers)
 
     # Metric to use for training and performance evaluation
     from secml.ml.peval.metrics import CMetricAccuracy
@@ -142,7 +144,7 @@ def attack_keras_model(df, Y, S):
 
     # Train the classifier
     clf.fit(tr_set_secML)
-    print(clf.num_classifiers)
+    logger.debug(clf.num_classifiers)
 
     # Compute predictions on a test set
     y_pred = clf.predict(ts_set_secML.X)
@@ -150,7 +152,7 @@ def attack_keras_model(df, Y, S):
     # Evaluate the accuracy of the classifier
     acc = metric.performance_score(y_true=ts_set_secML.Y, y_pred=y_pred)
 
-    print("Accuracy on test set: {:.2%}".format(acc))
+    logger.debug("Accuracy on test set: {:.2%}".format(acc))
 
     # Prepare attack configuration
 
@@ -198,7 +200,7 @@ def attack_keras_model(df, Y, S):
             result_pts[nb_iter] = adv_pt
             result_class[nb_iter] = y_pred_pgdls.get_data()[0]
         except ValueError:
-            print("value error on {}".format(nb_iter))
+            logger.warning("value error on {}".format(nb_iter))
 
     return result_pts, result_class
 
