@@ -72,7 +72,7 @@ def transform_dataset(df):
     return df_binary_encoded, Y, S
 
 
-def attack_keras_model(df, Y, S):
+def attack_keras_model(df, Y, S, nb_attack = 25):
     """
     Generates an adversarial attack on a general model.
 
@@ -183,7 +183,6 @@ def attack_keras_model(df, Y, S):
         solver_params=solver_params,
         y_target=y_target)
 
-    nb_attack = 25
     result_pts = np.empty([nb_attack, nb_feat])
     result_class = np.empty([nb_attack, 1])
 
@@ -193,14 +192,17 @@ def attack_keras_model(df, Y, S):
         rn = random.randint(0, ts_set_secML.num_samples)
         x0, y0 = ts_set_secML[rn, :].X, ts_set_secML[rn, :].Y
 
-        try:
-            y_pred_pgdls, _, adv_ds_pgdls, _ = pgd_ls_attack.run(x0, y0)
-            adv_pt = adv_ds_pgdls.X.get_data()
-            # np.asarray([np.asarray(row, dtype=float) for row in y_tr], dtype=float)
-            result_pts[nb_iter] = adv_pt
-            result_class[nb_iter] = y_pred_pgdls.get_data()[0]
-        except ValueError:
-            logger.warning("value error on {}".format(nb_iter))
+        error = False
+        while not error:
+            try:
+                y_pred_pgdls, _, adv_ds_pgdls, _ = pgd_ls_attack.run(x0, y0)
+                adv_pt = adv_ds_pgdls.X.get_data()
+                # np.asarray([np.asarray(row, dtype=float) for row in y_tr], dtype=float)
+                result_pts[nb_iter] = adv_pt
+                result_class[nb_iter] = y_pred_pgdls.get_data()[0]
+            except ValueError:
+                logger.warning("value error on {}".format(nb_iter))
+                error = True
 
     return result_pts, result_class
 

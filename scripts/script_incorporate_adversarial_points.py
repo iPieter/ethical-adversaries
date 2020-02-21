@@ -7,15 +7,27 @@ from sklearn import preprocessing
 from scripts.gradient_reversal import GradientReversalModel
 from scripts.bayesian_model import BayesianModel as bm
 import matplotlib.pyplot as plt
+from tqdm import tqdm, trange
 
 import logging
 
-logging.basicConfig(format="'%(asctime)s - %(name)s - %(levelname)s - %(message)s'", level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# logger.basicConfig(format="'%(asctime)s - %(name)s - %(levelname)s - %(message)s'", level=logging.INFO)
+
+GRADIENT_REVERSAL_LAMBDA = 100
+BATCH_SIZE = 512
+MAX_EPOCHS = 15
 
 
-def plot_history(history):
-    "Small utility function to plot keras' history object."
+def plot_history(history, save=None):
+    """
+    Small utility function to plot keras' history object.
 
+    :param history: the keras history object
+    :param save: either None (default) or a path to save the training object to.
+    :return: No return values.
+    """
     plt.figure(figsize=(10, 7.5))
 
     # summarize history for accuracy
@@ -46,7 +58,11 @@ def plot_history(history):
     plt.ylabel('loss')
     plt.xlabel('epoch')
     plt.legend(['Y', 'A', 'combined'], loc='upper left')
-    plt.show()
+
+    if save is not None:
+        plt.savefig(save)
+    else:
+        plt.show()
 
 
 def main():
@@ -57,11 +73,7 @@ def main():
 
     df_outcome = pd.DataFrame(np.array([S, Y]).T, columns=['race', 'true'])
 
-    logging.info("creating a new model with {} inputs".format(df_binary.shape[1]))
-
-    GRADIENT_REVERSAL_LAMBDA = 100
-    BATCH_SIZE = 32
-    MAX_EPOCHS = 1500
+    logger.info("creating a new model with {} inputs".format(df_binary.shape[1]))
 
     gm = GradientReversalModel(GRADIENT_REVERSAL_LAMBDA, input_shape=df_binary.shape[1])
     history = gm.get_model().fit(df_binary,
@@ -69,48 +81,71 @@ def main():
                                   "output2": preprocessing.OneHotEncoder().fit_transform(
                                       np.array(S).reshape(-1, 1)).toarray()},
                                  epochs=MAX_EPOCHS,
-                                 batch_size=BATCH_SIZE)
+                                 batch_size=BATCH_SIZE,
+                                 verbose=0)
 
-    plot_history(history)
+    plot_history(history, save="base.png")
+    evolution = []
 
     df_outcome['pred'] = gm.predict(df_binary)[0]
-    result_pts, result_class = attack_keras_model(df_binary, Y=Y, S=S)
-
     dem_parity = abs(
         bm(df_outcome).P(pred=lambda x: x > 4).given(race="Caucasian") - bm(df_outcome).P(pred=lambda x: x > 4).given(
             race="African-American"))
-    logging.info("Bias: {}".format(dem_parity))
 
     eq_op = abs(bm(df_outcome).P(pred=lambda x: x > 4).given(race="Caucasian", true=True) - bm(df_outcome).P(
         pred=lambda x: x > 4).given(race="African-American", true=True))
-    logging.info("Bias: {}".format(eq_op))
 
-    attacked_df = pd.concat([df_binary, pd.DataFrame(result_pts, columns=df_binary.columns)])
+    evolution.append({'DP': dem_parity, 'EO': eq_op})
 
-    S_clean = preprocessing.OneHotEncoder().fit_transform(np.array(S).reshape(-1, 1)).toarray()
-    S_new = np.random.randint(2, size=len(result_class))
+    # Set up an interator with console progress
+    t_prog = trange(5, desc='Progress', leave=True)
 
-    logging.info("creating a new model with {} inputs".format(df_binary.shape[1]))
+    for i in t_prog:
+        try:
+            result_pts, result_class = attack_keras_model(
+                df_binary,
+                Y=Y,
+                S=S,
+                nb_attack=1)
 
-    gm = GradientReversalModel(100, input_shape=attacked_df.shape[1])
-    history = gm.get_model().fit(attacked_df,
-                       {"output": np.concatenate([Y, result_class[:, 0]]),
-                        "output2": np.concatenate([S_clean, np.array([S_new, 1 - S_new]).T])},
-                       epochs=MAX_EPOCHS,
-                       batch_size=BATCH_SIZE)
+            attacked_df = pd.concat([
+                df_binary,
+                pd.DataFrame(result_pts, columns=df_binary.columns)])
 
-    plot_history(history)
+            S_clean = preprocessing.OneHotEncoder().fit_transform(np.array(S).reshape(-1, 1)).toarray()
+            S_new = np.random.randint(2, size=len(result_class))
 
-    df_outcome['pred'] = gm.predict(df_binary)[0]
+            logger.info("creating a new model with {} inputs".format(df_binary.shape[1]))
 
-    dem_parity = abs(
-        bm(df_outcome).P(pred=lambda x: x > 4).given(race="Caucasian") - bm(df_outcome).P(pred=lambda x: x > 4).given(
-            race="African-American"))
-    logging.info("Bias: {}".format(dem_parity))
+            gm = GradientReversalModel(100, input_shape=attacked_df.shape[1])
+            history = gm.get_model().fit(attacked_df,
+                                         {"output": np.concatenate([Y, result_class[:, 0]]),
+                                          "output2": np.concatenate([S_clean, np.array([S_new, 1 - S_new]).T])},
+                                         epochs=MAX_EPOCHS,
+                                         batch_size=BATCH_SIZE,
+                                         verbose=0)
 
-    eq_op = abs(bm(df_outcome).P(pred=lambda x: x > 4).given(race="Caucasian", true=True) - bm(df_outcome).P(
-        pred=lambda x: x > 4).given(race="African-American", true=True))
-    logging.info("Bias: {}".format(eq_op))
+            plot_history(history, save="{}.png".format(i))
+
+            df_outcome['pred'] = gm.predict(df_binary)[0]
+
+            dem_parity = abs(
+                bm(df_outcome).P(pred=lambda x: x > 4).given(race="Caucasian") - bm(df_outcome).P(
+                    pred=lambda x: x > 4).given(
+                    race="African-American"))
+            logger.info("Bias: {}".format(dem_parity))
+
+            eq_op = abs(bm(df_outcome).P(pred=lambda x: x > 4).given(race="Caucasian", true=True) - bm(df_outcome).P(
+                pred=lambda x: x > 4).given(race="African-American", true=True))
+            logger.info("Bias: {}".format(eq_op))
+
+            evolution.append({'DP': dem_parity, 'EO': eq_op})
+
+            t_prog.set_postfix(evolution[-1])  # print last metrics
+            t_prog.refresh()
+
+        except IndexError:
+            pass
 
 
 if __name__ == '__main__':
