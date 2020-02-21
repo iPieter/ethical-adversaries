@@ -13,6 +13,7 @@ secml = "*"
 jupyter = "*"
 keras = "*"
 tensorflow = "~=1.15"
+tqdm = "*"
 
 [requires]
 python_version = "3.7"
