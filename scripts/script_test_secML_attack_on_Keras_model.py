@@ -18,17 +18,14 @@ def transform_dataset(df):
 
     ##separated class from the rests of the features
     # remove unnecessary dimensions from Y -> only the decile_score remains
-    Y_to_remove = df_binary['decile_score']
+    Y = df_binary['decile_score']
     del df_binary['decile_score']
     del df_binary['two_year_recid']
     del df_binary['score_text']
 
     S = df_binary['race']
     del df_binary['race']
-
-    # del X[nb_feat-1]
-    Y = df_binary['is_recid']
-    df_binary.drop(columns='is_recid', inplace=True)
+    del df_binary['is_recid']
 
     # set sparse to False to return dense matrix after transformation and keep all dimensions homogeneous
     encod = preprocessing.OneHotEncoder(sparse=False)
@@ -71,6 +68,7 @@ def transform_dataset(df):
     df_binary_encoded = pd.concat([df_binary_encoded, pd.DataFrame(encoded_feature)], axis=1)
 
     return df_binary_encoded, Y, S
+
 
 def attack_keras_model(df, Y, S):
     """
