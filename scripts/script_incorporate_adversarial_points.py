@@ -1,11 +1,11 @@
-from scripts.script_test_secML_attack_on_Keras_model import attack_keras_model, transform_dataset
+from script_test_secML_attack_on_Keras_model import attack_keras_model, transform_dataset
 import pandas as pd
 import os
 import numpy as np
 import tensorflow as tf
 from sklearn import preprocessing
-from scripts.gradient_reversal import GradientReversalModel
-from scripts.bayesian_model import BayesianModel as bm
+from gradient_reversal import GradientReversalModel
+from bayesian_model import BayesianModel as bm
 import matplotlib.pyplot as plt
 from tqdm import tqdm, trange
 
@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 # logger.basicConfig(format="'%(asctime)s - %(name)s - %(levelname)s - %(message)s'", level=logging.INFO)
 
 GRADIENT_REVERSAL_LAMBDA = 100
-BATCH_SIZE = 512
-MAX_EPOCHS = 15
+BATCH_SIZE = 2048
+MAX_EPOCHS = 15000
 
 
 def plot_history(history, save=None):
@@ -98,7 +98,7 @@ def main():
     evolution.append({'DP': dem_parity, 'EO': eq_op})
 
     # Set up an interator with console progress
-    t_prog = trange(5, desc='Progress', leave=True)
+    t_prog = trange(50, desc='Progress', leave=True)
 
     for i in t_prog:
         try:
@@ -106,7 +106,7 @@ def main():
                 df_binary,
                 Y=Y,
                 S=S,
-                nb_attack=1)
+                nb_attack=25)
 
             attacked_df = pd.concat([
                 df_binary,
@@ -147,6 +147,7 @@ def main():
         except IndexError:
             pass
 
+    print(evolution)
 
 if __name__ == '__main__':
     main()

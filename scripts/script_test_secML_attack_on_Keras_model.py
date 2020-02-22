@@ -192,17 +192,14 @@ def attack_keras_model(df, Y, S, nb_attack = 25):
         rn = random.randint(0, ts_set_secML.num_samples)
         x0, y0 = ts_set_secML[rn, :].X, ts_set_secML[rn, :].Y
 
-        error = False
-        while not error:
-            try:
-                y_pred_pgdls, _, adv_ds_pgdls, _ = pgd_ls_attack.run(x0, y0)
-                adv_pt = adv_ds_pgdls.X.get_data()
-                # np.asarray([np.asarray(row, dtype=float) for row in y_tr], dtype=float)
-                result_pts[nb_iter] = adv_pt
-                result_class[nb_iter] = y_pred_pgdls.get_data()[0]
-            except ValueError:
-                logger.warning("value error on {}".format(nb_iter))
-                error = True
+    try:
+        y_pred_pgdls, _, adv_ds_pgdls, _ = pgd_ls_attack.run(x0, y0)
+        adv_pt = adv_ds_pgdls.X.get_data()
+        # np.asarray([np.asarray(row, dtype=float) for row in y_tr], dtype=float)
+        result_pts[nb_iter] = adv_pt
+        result_class[nb_iter] = y_pred_pgdls.get_data()[0]
+    except ValueError:
+        logger.warning("value error on {}".format(nb_iter))
 
     return result_pts, result_class
 
