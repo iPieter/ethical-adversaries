@@ -11,9 +11,8 @@ pandas = "*"
 scikit-learn = "*"
 secml = "*"
 jupyter = "*"
-keras = "*"
-tensorflow = "~=1.15"
 tqdm = "*"
+torch= "*"
 
 [requires]
 python_version = "3.7"
