@@ -215,7 +215,8 @@ def main(args):
     val_loader = DataLoader(dataset=val_dataset, batch_size=128)
     test_loader = DataLoader(dataset=test_dataset, batch_size=128)
 
-    for i in trange(5, desc="Attack", leave=False, position=0):
+    t_main = trange(args.iterations, desc="Attack", leave=False, position=0)
+    for i in t_main:
         # Train network
         network, results = train_and_evaluate(train_loader, val_loader, test_loader, device)
 
@@ -233,7 +234,7 @@ def main(args):
             bm(results).P(pred=lambda x: x > 4).given(race=0)
             / bm(results).P(pred=lambda x: x > 4).given(
                 race=1))
-        logging.debug({"DP": dem_parity, "EO": eq_op, "DP ratio": dem_parity_ratio})
+        t_main.set_postfix({"DP": dem_parity, "EO": eq_op, "DP ratio": dem_parity_ratio})
 
         # Attack
         result_pts, result_class, labels = attack_keras_model(
@@ -251,9 +252,9 @@ def main(args):
 
         adversarial_dataset = TensorDataset(x_tensor, y_tensor, l_tensor, s_tensor)
 
-        new_train_dataset = ConcatDataset([train_dataset, adversarial_dataset])
-        train_loader = DataLoader(dataset=new_train_dataset, batch_size=128, shuffle=True)
-        logging.debug("New training dataset has size {} (original {}).".format(len(train_loader), train_dataset))
+        train_dataset = ConcatDataset([train_dataset, adversarial_dataset])
+        train_loader = DataLoader(dataset=train_dataset, batch_size=128, shuffle=True)
+        logging.debug("New training dataset has size {} (original {}).".format(len(train_loader), base_size*7))
 
 if __name__ == '__main__':
     # Define arguments for cli and run main function
