@@ -5,6 +5,7 @@ from sklearn import preprocessing
 import logging
 logger = logging.getLogger(__name__)
 
+
 def transform_dataset(df):
     """
 
@@ -21,6 +22,7 @@ def transform_dataset(df):
     # remove unnecessary dimensions from Y -> only the decile_score remains
     Y = df_binary['decile_score']
     del df_binary['decile_score']
+    Y_true = df_binary['two_year_recid']
     del df_binary['two_year_recid']
     del df_binary['score_text']
 
@@ -40,8 +42,6 @@ def transform_dataset(df):
     encoded_feature = encod.fit_transform(feat_to_encode)
 
     df_binary_encoded = pd.DataFrame(encoded_feature)
-
-    df_binary_encoded.head()
 
     feat_to_encode = data_to_encode[:, 1]
     feat_to_encode = feat_to_encode.reshape(-1, 1)
@@ -68,28 +68,24 @@ def transform_dataset(df):
 
     df_binary_encoded = pd.concat([df_binary_encoded, pd.DataFrame(encoded_feature)], axis=1)
 
-    return df_binary_encoded, Y, S
+    return df_binary_encoded, Y, S, Y_true
 
 
-def attack_keras_model(df, Y, S, nb_attack = 25):
+def attack_keras_model(X, Y, S, nb_attack=25, dmax=0.1):
     """
     Generates an adversarial attack on a general model.
 
-    :param df: Original inputs on which the model is trained
+    :param X: Original inputs on which the model is trained
+    :param Y: Original outputs on which the model is trained
+    :param S: Original protected attributes on which the model is trained
     :return: Adversarial dataset (i.e. new data points + original input)
     """
-
-    nb_feat = df.shape[1]
-    X = df
-    idx = list(range(nb_feat))
-    str_idx = [str(i) for i in idx]
-    X.columns = str_idx
 
     from secml.data import CDataset
     from secml.array import CArray
 
     # secML wants all dimensions to be homogeneous (we had previously float and int in X)
-    data_set_encoded_secML = CArray(X.to_numpy(), dtype=float, copy=True)
+    data_set_encoded_secML = CArray(X, dtype=float, copy=True)
     data_set_encoded_secML = CDataset(data_set_encoded_secML, Y)
 
     n_tr = round(0.66 * X.shape[0])
@@ -101,6 +97,8 @@ def attack_keras_model(df, Y, S, nb_attack = 25):
 
     from secml.data.splitter import CTrainTestSplit
     splitter = CTrainTestSplit(train_size=n_tr, test_size=n_ts)
+
+    # Use training set for the classifier and then pick points from an internal test set.
     tr_set_secML, ts_set_secML = splitter.split(data_set_encoded_secML)
 
     # tr_set_secML = CDataset(X_train,Y_train)
@@ -156,18 +154,17 @@ def attack_keras_model(df, Y, S, nb_attack = 25):
 
     # Prepare attack configuration
 
-    noise_type = 'l2'  # Type of perturbation 'l1' or 'l2'
-    dmax = 0.4  # Maximum perturbation
-    lb, ub = 0, 1  # Bounds of the attack space. Can be set to `None` for unbounded
-    y_target = None  # None if `error-generic` or a class label for `error-specific`
+    noise_type = 'l2'   # Type of perturbation 'l1' or 'l2'
+    lb, ub = 0, 1       # Bounds of the attack space. Can be set to `None` for unbounded
+    y_target = None     # None if `error-generic` or a class label for `error-specific`
 
     # Should be chosen depending on the optimization problem
     solver_params = {
-        'eta': 0.3,
+        'eta': 0.1,         # grid search resolution
         'eta_min': 0.1,
-        'eta_max': None,
-        'max_iter': 100,
-        'eps': 1e-4
+        'eta_max': None,    # None should be ok
+        'max_iter': 1000,
+        'eps': 1e-2         # Tolerance on the stopping crit.
     }
 
     # Run attack
@@ -183,6 +180,8 @@ def attack_keras_model(df, Y, S, nb_attack = 25):
         solver_params=solver_params,
         y_target=y_target)
 
+    nb_feat = X.shape[1]
+
     result_pts = np.empty([nb_attack, nb_feat])
     result_class = np.empty([nb_attack, 1])
 
@@ -190,18 +189,18 @@ def attack_keras_model(df, Y, S, nb_attack = 25):
     import random
     for nb_iter in range(0, nb_attack - 1):
         rn = random.randint(0, ts_set_secML.num_samples)
-        x0, y0 = ts_set_secML[rn, :].X, ts_set_secML[rn, :].Y
+        x0, y0 = ts_set_secML[rn, :].X, ts_set_secML[rn, :].Y,
 
-    try:
-        y_pred_pgdls, _, adv_ds_pgdls, _ = pgd_ls_attack.run(x0, y0)
-        adv_pt = adv_ds_pgdls.X.get_data()
-        # np.asarray([np.asarray(row, dtype=float) for row in y_tr], dtype=float)
-        result_pts[nb_iter] = adv_pt
-        result_class[nb_iter] = y_pred_pgdls.get_data()[0]
-    except ValueError:
-        logger.warning("value error on {}".format(nb_iter))
+        try:
+            y_pred_pgdls, _, adv_ds_pgdls, _ = pgd_ls_attack.run(x0, y0)
+            adv_pt = adv_ds_pgdls.X.get_data()
+            # np.asarray([np.asarray(row, dtype=float) for row in y_tr], dtype=float)
+            result_pts[nb_iter] = adv_pt
+            result_class[nb_iter] = y_pred_pgdls.get_data()[0]
+        except ValueError:
+            logger.warning("value error on {}".format(nb_iter))
 
-    return result_pts, result_class
+    return result_pts, result_class, ts_set_secML[:nb_attack, :].Y
 
 
 if __name__ == '__main__':
