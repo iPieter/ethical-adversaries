@@ -220,6 +220,8 @@ def main(args):
     l_train_tensor = train_dataset[:][2]
     s_train_tensor = train_dataset[:][3]
 
+    global_results = []
+
     t_main = trange(args.iterations, desc="Attack", leave=False, position=0)
     for i in t_main:
         # Train network
@@ -239,7 +241,11 @@ def main(args):
             bm(results).P(pred=lambda x: x > 4).given(race=0)
             / bm(results).P(pred=lambda x: x > 4).given(
                 race=1))
-        t_main.set_postfix({"DP": dem_parity, "EO": eq_op, "DP ratio": dem_parity_ratio})
+
+        result = {"DP": dem_parity, "EO": eq_op, "DP ratio": dem_parity_ratio}
+        t_main.set_postfix(result)
+
+        global_results.append(result)
 
         # Attack
         result_pts, result_class, labels = attack_keras_model(
@@ -258,6 +264,10 @@ def main(args):
         train_dataset = TensorDataset(x_train_tensor, y_train_tensor, l_train_tensor, s_train_tensor)
         train_loader = DataLoader(dataset=train_dataset, batch_size=128, shuffle=True)
         logging.debug("New training dataset has size {} (original {}).".format(len(train_loader), base_size*7))
+
+    df = pd.DataFrame(global_results)
+
+    print(df)
 
 if __name__ == '__main__':
     # Define arguments for cli and run main function
