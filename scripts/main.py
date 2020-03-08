@@ -215,6 +215,11 @@ def main(args):
     val_loader = DataLoader(dataset=val_dataset, batch_size=128)
     test_loader = DataLoader(dataset=test_dataset, batch_size=128)
 
+    x_train_tensor = train_dataset[:][0]
+    y_train_tensor = train_dataset[:][1]
+    l_train_tensor = train_dataset[:][2]
+    s_train_tensor = train_dataset[:][3]
+
     t_main = trange(args.iterations, desc="Attack", leave=False, position=0)
     for i in t_main:
         # Train network
@@ -238,21 +243,19 @@ def main(args):
 
         # Attack
         result_pts, result_class, labels = attack_keras_model(
-            CArray(train_dataset[:][0]),
-            Y=CArray((train_dataset[:][1][:, 0] > 4).int()),
-            S=train_dataset[:][3],
+            CArray(x_train_tensor),
+            Y=CArray((y_train_tensor[:, 0] > 4).int()),
+            S=s_train_tensor,
             nb_attack=25)
 
         # incorporate adversarial points
-        x_tensor = torch.tensor(result_pts.astype(np.float32)).clamp(0, 1)
-        y_tensor = torch.tensor(result_class.reshape(-1, 1).astype(np.float32))
-        l_tensor = torch.tensor(labels.tondarray().reshape(-1, 1).astype(np.float32))
+        x_train_tensor = torch.cat((x_train_tensor, torch.tensor(result_pts.astype(np.float32)).clamp(0, 1)))
+        y_train_tensor = torch.cat((y_train_tensor, torch.tensor(result_class.reshape(-1, 1).astype(np.float32))))
+        l_train_tensor = torch.cat((l_train_tensor, torch.tensor(labels.tondarray().reshape(-1, 1).astype(np.float32))))
         s = np.random.randint(2, size=len(result_class))
-        s_tensor = torch.tensor(np.array([s, 1 - s]).T.astype(np.float64))
+        s_train_tensor = torch.cat((s_train_tensor,  torch.tensor(np.array([s, 1 - s]).T.astype(np.float64))))
 
-        adversarial_dataset = TensorDataset(x_tensor, y_tensor, l_tensor, s_tensor)
-
-        train_dataset = ConcatDataset([train_dataset, adversarial_dataset])
+        train_dataset = TensorDataset(x_train_tensor, y_train_tensor, l_train_tensor, s_train_tensor)
         train_loader = DataLoader(dataset=train_dataset, batch_size=128, shuffle=True)
         logging.debug("New training dataset has size {} (original {}).".format(len(train_loader), base_size*7))
 
@@ -263,5 +266,6 @@ if __name__ == '__main__':
     parser.add_argument('--iterations', help="Number of attack iterations", default=5)
     parser.add_argument('--batch size', help="Size of each minibatch for the classifier", default=128)
     parser.add_argument('--show-graphs', help="Shows graph of training, etc. if true.", default=True)
+    parser.add_argument('--lambda', help="Gradient reversal parameter.", default=100)
     args = parser.parse_args()
     main(args)
