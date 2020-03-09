@@ -18,6 +18,7 @@ import logging
 from torch.autograd import Function
 import matplotlib.pyplot as plt
 from bayesian_model import BayesianModel as bm
+from pycm import ConfusionMatrix
 
 from secml.array.c_array import CArray
 
@@ -56,13 +57,13 @@ class GradientReversal(torch.nn.Module):
 
 class Net(nn.Module):
 
-    def __init__(self):
+    def __init__(self, grl_lambda=100):
         super(Net, self).__init__()
         # an affine operation: y = Wx + b
         self.fc1 = nn.Linear(14, 64)
         self.fc2 = nn.Linear(64, 64)
         self.fc3 = nn.Linear(64, 1)
-        self.grl = GradientReversal(100)
+        self.grl = GradientReversal(grl_lambda )
         self.fc4 = nn.Linear(64, 2)
 
         # self.grl = GradientReversal(100)
@@ -86,7 +87,8 @@ class Net(nn.Module):
 def train_and_evaluate(train_loader: DataLoader,
                        val_loader: DataLoader,
                        test_loader: DataLoader,
-                       device):
+                       device,
+                       args):
     """
 
     :param train_loader: Pytorch-like DataLoader with training data.
@@ -98,16 +100,15 @@ def train_and_evaluate(train_loader: DataLoader,
 
     torch.manual_seed(0)
 
-    model = Net()
+    model = Net(args.grl_lambda)
     criterion = nn.MSELoss()
     criterion_bias = nn.CrossEntropyLoss()
     optimizer = optim.Adagrad(model.parameters())
 
-    n_epochs = 50
     training_losses = []
     validation_losses = []
 
-    t_prog = trange(n_epochs, desc='Training neural network', leave=False, position=1)
+    t_prog = trange(args.epochs, desc='Training neural network', leave=False, position=1, mininterval=5)
     # t_prog = trange(50)
 
     for epoch in t_prog:
@@ -145,7 +146,7 @@ def train_and_evaluate(train_loader: DataLoader,
             validation_losses.append(validation_loss)
 
         t_prog.set_postfix({"epoch": epoch, "training_loss": training_loss,
-                            "validation_loss": validation_loss})  # print last metrics
+                            "validation_loss": validation_loss}, refresh=False)  # print last metrics
 
 
     if args.show_graphs:
@@ -211,9 +212,9 @@ def main(args):
 
     train_dataset, val_dataset, test_dataset = random_split(dataset, split)
 
-    train_loader = DataLoader(dataset=train_dataset, batch_size=128, shuffle=True)
-    val_loader = DataLoader(dataset=val_dataset, batch_size=128)
-    test_loader = DataLoader(dataset=test_dataset, batch_size=128)
+    train_loader = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True)
+    val_loader = DataLoader(dataset=val_dataset, batch_size=args.batch_size)
+    test_loader = DataLoader(dataset=test_dataset, batch_size=args.batch_size)
 
     x_train_tensor = train_dataset[:][0]
     y_train_tensor = train_dataset[:][1]
@@ -225,7 +226,7 @@ def main(args):
     t_main = trange(args.iterations, desc="Attack", leave=False, position=0)
     for i in t_main:
         # Train network
-        network, results = train_and_evaluate(train_loader, val_loader, test_loader, device)
+        network, results = train_and_evaluate(train_loader, val_loader, test_loader, device, args)
 
         # Calculate biases after training
         dem_parity = abs(
@@ -242,7 +243,11 @@ def main(args):
             / bm(results).P(pred=lambda x: x > 4).given(
                 race=1))
 
-        result = {"DP": dem_parity, "EO": eq_op, "DP ratio": dem_parity_ratio}
+
+        cm = ConfusionMatrix(actual_vector=(results['true'] == True).values,
+                              predict_vector=(results['pred'] > 4).values)
+
+        result = {"DP": dem_parity, "EO": eq_op, "DP ratio": dem_parity_ratio, "acc": cm.Overall_ACC, "f1": cm.F1_Macro}
         t_main.set_postfix(result)
 
         global_results.append(result)
@@ -256,13 +261,13 @@ def main(args):
 
         # incorporate adversarial points
         x_train_tensor = torch.cat((x_train_tensor, torch.tensor(result_pts.astype(np.float32)).clamp(0, 1)))
-        y_train_tensor = torch.cat((y_train_tensor, torch.tensor(result_class.reshape(-1, 1).astype(np.float32))))
+        y_train_tensor = torch.cat((y_train_tensor, torch.tensor(result_class.reshape(-1, 1).astype(np.float32)).clamp(0, 10)))
         l_train_tensor = torch.cat((l_train_tensor, torch.tensor(labels.tondarray().reshape(-1, 1).astype(np.float32))))
         s = np.random.randint(2, size=len(result_class))
         s_train_tensor = torch.cat((s_train_tensor,  torch.tensor(np.array([s, 1 - s]).T.astype(np.float64))))
 
         train_dataset = TensorDataset(x_train_tensor, y_train_tensor, l_train_tensor, s_train_tensor)
-        train_loader = DataLoader(dataset=train_dataset, batch_size=128, shuffle=True)
+        train_loader = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True)
         logging.debug("New training dataset has size {} (original {}).".format(len(train_loader), base_size*7))
 
     df = pd.DataFrame(global_results)
@@ -272,10 +277,10 @@ def main(args):
 if __name__ == '__main__':
     # Define arguments for cli and run main function
     parser = argparse.ArgumentParser()
-    parser.add_argument('--epochs', default=10)
-    parser.add_argument('--iterations', help="Number of attack iterations", default=5)
-    parser.add_argument('--batch size', help="Size of each minibatch for the classifier", default=128)
+    parser.add_argument('--epochs', default=1000)
+    parser.add_argument('--iterations', help="Number of attack iterations", default=20)
+    parser.add_argument('--batch-size', help="Size of each minibatch for the classifier", default=128)
     parser.add_argument('--show-graphs', help="Shows graph of training, etc. if true.", default=True)
-    parser.add_argument('--lambda', help="Gradient reversal parameter.", default=100)
+    parser.add_argument('--grl-lambda', help="Gradient reversal parameter.", default=1)
     args = parser.parse_args()
     main(args)
