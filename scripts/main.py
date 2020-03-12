@@ -88,7 +88,8 @@ def train_and_evaluate(train_loader: DataLoader,
                        val_loader: DataLoader,
                        test_loader: DataLoader,
                        device,
-                       args):
+                       args,
+                       grl_lambda = None):
     """
 
     :param train_loader: Pytorch-like DataLoader with training data.
@@ -100,7 +101,9 @@ def train_and_evaluate(train_loader: DataLoader,
 
     torch.manual_seed(0)
 
-    model = Net(args.grl_lambda)
+    grl_lambda = grl_lambda if grl_lambda is not None else args.grl_lambda
+
+    model = Net(grl_lambda)
     criterion = nn.MSELoss()
     criterion_bias = nn.CrossEntropyLoss()
     optimizer = optim.Adagrad(model.parameters())
@@ -124,7 +127,10 @@ def train_and_evaluate(train_loader: DataLoader,
 
             # forward + backward + optimize
             outputs, outputs_protected = model(x_batch)
-            loss = criterion(outputs, y_batch) + criterion_bias(outputs_protected, s_batch.argmax(dim=1))
+            if grl_lambda is not None:
+                loss = criterion(outputs, y_batch) + criterion_bias(outputs_protected, s_batch.argmax(dim=1))
+            else:
+                loss = criterion(outputs, y_batch)
             loss.backward()
             optimizer.step()
 
@@ -140,7 +146,10 @@ def train_and_evaluate(train_loader: DataLoader,
                 y_val = y_val.to(device)
                 model.eval()
                 yhat, s_hat = model(x_val)
-                val_loss = (criterion(y_val, yhat) + criterion_bias(s_val, s_hat.argmax(dim=1))).item()
+                if grl_lambda is not None:
+                    val_loss = (criterion(y_val, yhat) + criterion_bias(s_val, s_hat.argmax(dim=1))).item()
+                else:
+                    val_loss = criterion(y_val, yhat).item()
                 val_losses.append(val_loss)
             validation_loss = np.mean(val_losses)
             validation_losses.append(validation_loss)
@@ -223,10 +232,34 @@ def main(args):
 
     global_results = []
 
+    _, results = train_and_evaluate(train_loader, val_loader, test_loader, device, args, grl_lambda=0)
+
+    # Calculate biases after training
+    dem_parity = abs(
+        bm(results).P(pred=lambda x: x > 4).given(race=0)
+        - bm(results).P(pred=lambda x: x > 4).given(
+            race=1))
+
+    eq_op = abs(
+        bm(results).P(pred=lambda x: x > 4).given(race=0, compas=True)
+        - bm(results).P(pred=lambda x: x > 4).given(race=1, compas=True))
+
+    dem_parity_ratio = abs(
+        bm(results).P(pred=lambda x: x > 4).given(race=0)
+        / bm(results).P(pred=lambda x: x > 4).given(
+            race=1))
+
+    cm = ConfusionMatrix(actual_vector=(results['true'] == True).values,
+                         predict_vector=(results['pred'] > 4).values)
+
+    result = {"DP": dem_parity, "EO": eq_op, "DP ratio": dem_parity_ratio, "acc": cm.Overall_ACC, "f1": cm.F1_Macro}
+
+    global_results.append(result)
+
     t_main = trange(args.iterations, desc="Attack", leave=False, position=0)
     for i in t_main:
         # Train network
-        network, results = train_and_evaluate(train_loader, val_loader, test_loader, device, args)
+        _, results = train_and_evaluate(train_loader, val_loader, test_loader, device, args)
 
         # Calculate biases after training
         dem_parity = abs(
@@ -270,16 +303,16 @@ def main(args):
         train_loader = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True)
         logging.debug("New training dataset has size {} (original {}).".format(len(train_loader), base_size*7))
 
-    df = pd.DataFrame(global_results)
+        df = pd.DataFrame(global_results)
 
-    print(df)
+        print(df)
 
 if __name__ == '__main__':
     # Define arguments for cli and run main function
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', default=1000)
     parser.add_argument('--iterations', help="Number of attack iterations", default=20)
-    parser.add_argument('--batch-size', help="Size of each minibatch for the classifier", default=128)
+    parser.add_argument('--batch-size', help="Size of each minibatch for the classifier", default=2048)
     parser.add_argument('--show-graphs', help="Shows graph of training, etc. if true.", default=True)
     parser.add_argument('--grl-lambda', help="Gradient reversal parameter.", default=1)
     args = parser.parse_args()

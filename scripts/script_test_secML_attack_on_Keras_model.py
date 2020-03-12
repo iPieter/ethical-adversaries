@@ -113,8 +113,7 @@ def attack_keras_model(X, Y, S, nb_attack=25, dmax=0.1):
     clf = CClassifierMulticlassOVA(CClassifierSVM, kernel=CKernelRBF())
 
     # Parameters for the Cross-Validation procedure
-    xval_params = {'C': [1e-4, 1e-3, 1e-2, 0.1, 1], 'kernel.gamma': [0.01, 0.1, 1, 10, 100, 1e3],
-                   'kernel.degree': [2, 3, 5]}
+    xval_params = {'C': [1e-4, 1e-3, 1e-2, 0.1, 1], 'kernel.gamma': [0.01, 0.1, 1, 10, 100, 1e3]}
 
     # Let's create a 3-Fold data splitter
     random_state = 999
