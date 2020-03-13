@@ -103,9 +103,9 @@ def train_and_evaluate(train_loader: DataLoader,
 
     grl_lambda = grl_lambda if grl_lambda is not None else args.grl_lambda
 
-    model = Net(grl_lambda)
-    criterion = nn.MSELoss()
-    criterion_bias = nn.CrossEntropyLoss()
+    model = Net(grl_lambda).to(device)
+    criterion = nn.MSELoss().to(device)
+    criterion_bias = nn.CrossEntropyLoss().to(device)
     optimizer = optim.Adagrad(model.parameters())
 
     training_losses = []
@@ -121,6 +121,7 @@ def train_and_evaluate(train_loader: DataLoader,
         for x_batch, y_batch, _, s_batch in train_loader:
             x_batch = x_batch.to(device)
             y_batch = y_batch.to(device)
+            s_batch = s_batch.to(device)
 
             # zero the parameter gradients
             optimizer.zero_grad()
@@ -144,6 +145,7 @@ def train_and_evaluate(train_loader: DataLoader,
             for x_val, y_val, _, s_val in val_loader:
                 x_val = x_val.to(device)
                 y_val = y_val.to(device)
+                s_val = s_val.to(device)
                 model.eval()
                 yhat, s_hat = model(x_val)
                 if grl_lambda is not None:
