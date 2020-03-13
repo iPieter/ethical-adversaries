@@ -173,6 +173,7 @@ def train_and_evaluate(train_loader: DataLoader,
         for x_test, y_test, ytrue, s_true in test_loader:
             x_test = x_test.to(device)
             y_test = y_test.to(device)
+            s_test = s_test.to(device)
             model.eval()
             yhat, s_hat = model(x_test)
             test_loss = (criterion(y_test, yhat) + criterion_bias(s_true, s_hat.argmax(dim=1))).item()
