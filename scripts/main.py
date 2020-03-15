@@ -194,12 +194,12 @@ def train_and_evaluate(train_loader: DataLoader,
         protected_results = torch.cat((protected_results, r['s']))
         protected = torch.cat((protected, r['s_hat']))
 
-    df = pd.DataFrame(data=results.numpy(), columns=['pred'])
+    df = pd.DataFrame(data=results.cpu().numpy(), columns=['pred'])
 
-    df['true'] = outcome.numpy()
-    df['compas'] = compas.numpy()
-    df['race'] = protected_results.numpy()[:, 0]
-    df['race_hat'] = protected.numpy()[:, 0]
+    df['true'] = outcome.cpu().numpy()
+    df['compas'] = compas.cpu().numpy()
+    df['race'] = protected_results.cpu().numpy()[:, 0]
+    df['race_hat'] = protected.cpu().numpy()[:, 0]
 
     return model, df
 
@@ -313,10 +313,10 @@ def main(args):
 if __name__ == '__main__':
     # Define arguments for cli and run main function
     parser = argparse.ArgumentParser()
-    parser.add_argument('--epochs', default=1000)
-    parser.add_argument('--iterations', help="Number of attack iterations", default=20)
-    parser.add_argument('--batch-size', help="Size of each minibatch for the classifier", default=2048)
+    parser.add_argument('--epochs', default=1000, type=int)
+    parser.add_argument('--iterations', help="Number of attack iterations", default=20, type=int)
+    parser.add_argument('--batch-size', help="Size of each minibatch for the classifier", default=2048, type=int)
     parser.add_argument('--show-graphs', help="Shows graph of training, etc. if true.", default=True)
-    parser.add_argument('--grl-lambda', help="Gradient reversal parameter.", default=1)
+    parser.add_argument('--grl-lambda', help="Gradient reversal parameter.", default=1, type=int)
     args = parser.parse_args()
     main(args)
