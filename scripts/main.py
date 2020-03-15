@@ -6,6 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, TensorDataset, DataLoader
 from torch.utils.data.dataset import random_split
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from tqdm import trange
 from tqdm.notebook import tnrange
 from torch.utils.data.dataset import ConcatDataset
@@ -60,11 +61,14 @@ class Net(nn.Module):
     def __init__(self, grl_lambda=100):
         super(Net, self).__init__()
         # an affine operation: y = Wx + b
-        self.fc1 = nn.Linear(14, 64)
-        self.fc2 = nn.Linear(64, 64)
-        self.fc3 = nn.Linear(64, 1)
-        self.grl = GradientReversal(grl_lambda )
-        self.fc4 = nn.Linear(64, 2)
+        self.grl_lambda = grl_lambda
+        self.fc1 = nn.Linear(18, 64)
+        self.fc2 = nn.Linear(64, 32)
+        self.fc3 = nn.Linear(32, 64)
+        self.fc4 = nn.Linear(64, 1)
+        if self.grl_lambda != 0:
+            self.grl = GradientReversal(grl_lambda)
+            self.fc5 = nn.Linear(64, 2)
 
         # self.grl = GradientReversal(100)
 
@@ -72,16 +76,28 @@ class Net(nn.Module):
         x = self.fc1(x)
         x = F.relu(x)
         x = F.dropout(x, 0.1)
-        x = self.fc2(x)
-        x = F.relu(x)
-        hidden = F.dropout(x, 0.1)
-        y = self.fc3(hidden)
-        y = F.dropout(y, 0.1)
-        s = self.grl(hidden)
-        s = self.fc4(s)
-        # s = F.sigmoid(s)
-        s = F.dropout(s, 0.1)
-        return y, s
+
+        hidden = self.fc2(x)
+        hidden = F.relu(hidden)
+        hidden = F.dropout(hidden, 0.1)
+
+        hidden = self.fc3(hidden)
+        hidden = F.relu(hidden)
+        hidden = F.dropout(hidden, 0.1)
+
+        y = self.fc4(hidden)
+        #y = F.dropout(y, 0.1)
+
+
+        if self.grl_lambda != 0:
+            s = self.grl(hidden)
+            s = self.fc5(s)
+            # s = F.sigmoid(s)
+            #s = F.dropout(s, 0.1)
+            return y, s
+
+        else:
+            return y
 
 
 def train_and_evaluate(train_loader: DataLoader,
@@ -107,6 +123,7 @@ def train_and_evaluate(train_loader: DataLoader,
     criterion = nn.MSELoss().to(device)
     criterion_bias = nn.CrossEntropyLoss().to(device)
     optimizer = optim.Adagrad(model.parameters())
+    scheduler = CosineAnnealingLR(optimizer, args.epochs)
 
     training_losses = []
     validation_losses = []
@@ -121,16 +138,16 @@ def train_and_evaluate(train_loader: DataLoader,
         for x_batch, y_batch, _, s_batch in train_loader:
             x_batch = x_batch.to(device)
             y_batch = y_batch.to(device)
-            s_batch = s_batch.to(device)
 
             # zero the parameter gradients
             optimizer.zero_grad()
 
             # forward + backward + optimize
-            outputs, outputs_protected = model(x_batch)
-            if grl_lambda is not None:
+            if grl_lambda is not None and grl_lambda != 0:
+                outputs, outputs_protected = model(x_batch)
                 loss = criterion(outputs, y_batch) + criterion_bias(outputs_protected, s_batch.argmax(dim=1))
             else:
+                outputs = model(x_batch)
                 loss = criterion(outputs, y_batch)
             loss.backward()
             optimizer.step()
@@ -147,14 +164,17 @@ def train_and_evaluate(train_loader: DataLoader,
                 y_val = y_val.to(device)
                 s_val = s_val.to(device)
                 model.eval()
-                yhat, s_hat = model(x_val)
-                if grl_lambda is not None:
+                if grl_lambda is not None and grl_lambda != 0:
+                    yhat, s_hat = model(x_val)
                     val_loss = (criterion(y_val, yhat) + criterion_bias(s_val, s_hat.argmax(dim=1))).item()
                 else:
+                    yhat = model(x_val)
                     val_loss = criterion(y_val, yhat).item()
                 val_losses.append(val_loss)
             validation_loss = np.mean(val_losses)
             validation_losses.append(validation_loss)
+
+            scheduler.step(val_loss)
 
         t_prog.set_postfix({"epoch": epoch, "training_loss": training_loss,
                             "validation_loss": validation_loss}, refresh=False)  # print last metrics
@@ -175,10 +195,16 @@ def train_and_evaluate(train_loader: DataLoader,
             y_test = y_test.to(device)
             s_true = s_true.to(device)
             model.eval()
-            yhat, s_hat = model(x_test)
-            test_loss = (criterion(y_test, yhat) + criterion_bias(s_true, s_hat.argmax(dim=1))).item()
-            test_losses.append(val_loss)
-            test_results.append({"y_hat": yhat, "y_true": ytrue, "y_compas": y_test, "s": s_true, "s_hat": s_hat})
+            if grl_lambda is not None and grl_lambda != 0:
+                yhat, s_hat = model(x_test)
+                test_loss = (criterion(y_test, yhat) + criterion_bias(s_true, s_hat.argmax(dim=1))).item()
+                test_losses.append(val_loss)
+                test_results.append({"y_hat": yhat, "y_true": ytrue, "y_compas": y_test, "s": s_true, "s_hat": s_hat})
+            else:
+                yhat = model(x_test)
+                test_loss = (criterion(y_test, yhat)).item()
+                test_losses.append(val_loss)
+                test_results.append({"y_hat": yhat, "y_true": ytrue, "y_compas": y_test, "s": s_true})
 
         #print({"Test loss": np.mean(test_losses)})
 
@@ -186,20 +212,23 @@ def train_and_evaluate(train_loader: DataLoader,
     outcome = test_results[0]['y_true']
     compas = test_results[0]['y_compas']
     protected_results = test_results[0]['s']
-    protected = test_results[0]['s_hat']
+    if grl_lambda is not None and grl_lambda != 0:
+        protected = test_results[0]['s_hat']
     for r in test_results[1:]:
         results = torch.cat((results, r['y_hat']))
         outcome = torch.cat((outcome, r['y_true']))
         compas = torch.cat((compas, r['y_compas']))
         protected_results = torch.cat((protected_results, r['s']))
-        protected = torch.cat((protected, r['s_hat']))
+        if grl_lambda is not None and grl_lambda != 0:
+            protected = torch.cat((protected, r['s_hat']))
 
     df = pd.DataFrame(data=results.cpu().numpy(), columns=['pred'])
 
     df['true'] = outcome.cpu().numpy()
     df['compas'] = compas.cpu().numpy()
     df['race'] = protected_results.cpu().numpy()[:, 0]
-    df['race_hat'] = protected.cpu().numpy()[:, 0]
+    if grl_lambda is not None and grl_lambda != 0:
+        df['race_hat'] = protected.cpu().numpy()[:, 0]
 
     return model, df
 
@@ -259,6 +288,10 @@ def main(args):
 
     global_results.append(result)
 
+    df = pd.DataFrame(global_results)
+
+    print(df)
+
     t_main = trange(args.iterations, desc="Attack", leave=False, position=0)
     for i in t_main:
         # Train network
@@ -315,7 +348,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--epochs', default=1000, type=int)
     parser.add_argument('--iterations', help="Number of attack iterations", default=20, type=int)
-    parser.add_argument('--batch-size', help="Size of each minibatch for the classifier", default=2048, type=int)
+    parser.add_argument('--batch-size', help="Size of each minibatch for the classifier", default=256, type=int)
     parser.add_argument('--show-graphs', help="Shows graph of training, etc. if true.", default=True)
     parser.add_argument('--grl-lambda', help="Gradient reversal parameter.", default=1, type=int)
     args = parser.parse_args()

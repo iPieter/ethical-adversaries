@@ -27,8 +27,10 @@ def transform_dataset(df):
     del df_binary['score_text']
 
     S = df_binary['race']
-    del df_binary['race']
-    del df_binary['is_recid']
+    #del df_binary['race']
+    #del df_binary['is_recid']
+
+    print(df_binary)
 
     # set sparse to False to return dense matrix after transformation and keep all dimensions homogeneous
     encod = preprocessing.OneHotEncoder(sparse=False)
@@ -47,24 +49,33 @@ def transform_dataset(df):
     feat_to_encode = feat_to_encode.reshape(-1, 1)
     encoded_feature = encod.fit_transform(feat_to_encode)
 
-    df_encoded_feature = pd.DataFrame(encoded_feature)
+
+    df_binary_encoded = pd.concat([df_binary_encoded, pd.DataFrame(encoded_feature)], axis=1)
+
+    feat_to_encode = data_to_encode[:, 2] == "Caucasian"
+    feat_to_encode = feat_to_encode.reshape(-1, 1)
+    encoded_feature = encod.fit_transform(feat_to_encode)
 
     df_binary_encoded = pd.concat([df_binary_encoded, pd.DataFrame(encoded_feature)], axis=1)
 
     # feature [2] [3] [4] [5] [6] [7] [8] has to be put between 0 and 1
 
-    for i in range(2, 9):
+    for i in range(3, 10):
         encoded_feature = data_to_encode[:, i]
         ma = np.amax(encoded_feature)
         mi = np.amin(encoded_feature)
         encoded_feature = (encoded_feature - mi) / (ma - mi)
         df_binary_encoded = pd.concat([df_binary_encoded, pd.DataFrame(encoded_feature)], axis=1)
 
-    feat_to_encode = data_to_encode[:, 9]
+    feat_to_encode = data_to_encode[:, 10]
     feat_to_encode = feat_to_encode.reshape(-1, 1)
     encoded_feature = encod.fit_transform(feat_to_encode)
 
-    df_encoded_feature = pd.DataFrame(encoded_feature)
+    df_binary_encoded = pd.concat([df_binary_encoded, pd.DataFrame(encoded_feature)], axis=1)
+
+    feat_to_encode = data_to_encode[:, 11]
+    feat_to_encode = feat_to_encode.reshape(-1, 1)
+    encoded_feature = encod.fit_transform(feat_to_encode)
 
     df_binary_encoded = pd.concat([df_binary_encoded, pd.DataFrame(encoded_feature)], axis=1)
 
