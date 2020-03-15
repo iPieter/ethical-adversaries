@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, TensorDataset, DataLoader
 from torch.utils.data.dataset import random_split
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, ReduceLROnPlateau
 from tqdm import trange
 from tqdm.notebook import tnrange
 from torch.utils.data.dataset import ConcatDataset
@@ -122,8 +122,8 @@ def train_and_evaluate(train_loader: DataLoader,
     model = Net(grl_lambda).to(device)
     criterion = nn.MSELoss().to(device)
     criterion_bias = nn.CrossEntropyLoss().to(device)
-    optimizer = optim.Adagrad(model.parameters())
-    scheduler = CosineAnnealingLR(optimizer, args.epochs)
+    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    scheduler = ReduceLROnPlateau(optimizer, threshold=0.3, cooldown=5)
 
     training_losses = []
     validation_losses = []
@@ -328,8 +328,12 @@ def main(args):
             S=s_train_tensor,
             nb_attack=25)
 
+        print(result_pts)
+
         # incorporate adversarial points
-        x_train_tensor = torch.cat((x_train_tensor, torch.tensor(result_pts.astype(np.float32)).clamp(0, 1)))
+        results_pts = torch.tensor(result_pts.astype(np.float32)).clamp(0, 1)
+        results_pts[results_pts != results_pts] = 0
+        x_train_tensor = torch.cat((x_train_tensor, results_pts))
         y_train_tensor = torch.cat((y_train_tensor, torch.tensor(result_class.reshape(-1, 1).astype(np.float32)).clamp(0, 10)))
         l_train_tensor = torch.cat((l_train_tensor, torch.tensor(labels.tondarray().reshape(-1, 1).astype(np.float32))))
         s = np.random.randint(2, size=len(result_class))
