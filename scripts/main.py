@@ -238,10 +238,16 @@ def main(args):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     logging.debug("using device {} for pytorch.".format(device))
 
-    df = pd.read_csv(os.path.join("..", "data", "csv", "scikit",
+    if args.dataset == "compas":
+        df = pd.read_csv(os.path.join("..", "data", "csv", "scikit",
                                   "compas_recidive_two_years_sanitize_age_category_jail_time_decile_score.csv"))
-
-    df_binary, Y, S, Y_true = transform_dataset(df)
+        df_binary, Y, S, Y_true = transform_dataset(df)
+    elif args.dataset == "adult":
+        ##load the census income data set instead of the COMPAS one
+        df = pd.read_csv(os.path.join("..", "data", "csv", "scikit","adult.csv"))
+        df_binary, Y, S, Y_true = transform_dataset_census(df)
+    else:
+        raise ValueError("The value given to the --dataset parameter is not valid; try --dataset=compas or --dataset=adult")
 
     x_tensor = torch.tensor(df_binary.to_numpy().astype(np.float32))
     y_tensor = torch.tensor(Y.to_numpy().reshape(-1, 1).astype(np.float32))
@@ -363,5 +369,6 @@ if __name__ == '__main__':
     parser.add_argument('--grl-lambda', help="Gradient reversal parameter.", default=1, type=int)
     parser.add_argument('--attack-size', help="Number of adversarial points for each attack.", default=25, type=int)
     parser.add_argument('--reset-attack', help="Reuse the same model if False.", default=False, type=bool)
+    parser.add_argument('--dataset', help="The data set to use; values: compas or adult",default="compas",type=string)
     args = parser.parse_args()
     main(args)

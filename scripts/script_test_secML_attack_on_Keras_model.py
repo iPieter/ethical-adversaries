@@ -81,6 +81,74 @@ def transform_dataset(df):
 
     return df_binary_encoded, Y, S, Y_true
 
+def transform_dataset_census(df):
+    """
+
+    :param df: the dataset "census income" from a csv file with reduced features, heterogeneous types and missing values, no header
+    :return: Tuple of the transformed dataset and the labels Y and S
+    """
+
+    label_encoder = preprocessing.LabelEncoder()
+    oh_encoder = preprocessing.OneHotEncoder(sparse=False)
+
+    df_label = df.iloc[:,-1]
+
+    ##Y_true is the vector containing labels, at this point, labels (initially strings) have been transformed into integer (0 and 1) -> -5000 is now '0' and 5000+ is now '+1'
+    Y_true = label_encoder.fit_transform(df_label)
+    #remove last column from df
+    del df[df.columns[-1]]
+
+    #Y... ?
+    Y=[]
+
+    #S is the protected attribute
+    # could also be feature 7 (sex) or feature 13 (citizenship)
+    S=df["race"]
+    del df["race"]
+
+    #remove feature fnlwgt
+    del df["fnlwgt"]
+
+    #remove examples with missing values
+    df_replace = df.replace(to_replace="?",value=np.NaN)
+    df_replace.dropna(inplace=True)
+
+    if(df_replace.shape == df.shape)
+        raise AssertionError("The removal of na values failed")
+
+    #transform other features
+    #feature age to normalize
+    encoded_feature = df_replace.to_numpy()[:, 0]
+    mi = np.amin(encoded_feature)
+    ma = np.amax(encoded_feature)
+    encoded_feature = (encoded_feature - mi) / (ma - mi)
+    
+    #df_binary_encoded is the data frame containing encoded features
+    df_binary_encoded = pd.DataFrame(encoded_feature)
+
+    #feature 1 to 7 (after removal) are categorical
+    for i in range(1,8):
+        encod_feature = df.iloc[:,i]
+        encoded_feature = pd.get_dummies(encod_feature)
+        df_binary_encoded = pd.concat([df_binary_encoded, pd.DataFrame(encoded_feature)], axis=1)
+
+    #feature 8 and 9 are numerical
+    for i in range(8,10):
+        encod_feature = df.iloc[:,i]
+        mi = np.amin(encod_feature)
+        ma = np.amax(encod_feature)
+        encoded_feature = (encod_feature - mi) / (ma - mi)
+        df_binary_encoded = pd.concat([df_binary_encoded, pd.DataFrame(encoded_feature)], axis=1)
+    
+    #feature 10 and 11 are categorical
+    for i in range(10,12):
+        encod_feature = df.iloc[:,i]
+        encoded_feature = pd.get_dummies(encod_feature)
+        df_binary_encoded = pd.concat([df_binary_encoded, pd.DataFrame(encoded_feature)], axis=1)
+
+
+    return df_binary_encoded, Y, S, Y_true
+
 
 def attack_keras_model(X, Y, S, nb_attack=25, dmax=0.1):
     """
