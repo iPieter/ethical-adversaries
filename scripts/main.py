@@ -102,7 +102,8 @@ def train_and_evaluate(train_loader: DataLoader,
                        test_loader: DataLoader,
                        device,
                        args,
-                       grl_lambda = None):
+                       grl_lambda = None,
+                       model = None):
     """
 
     :param train_loader: Pytorch-like DataLoader with training data.
@@ -116,7 +117,10 @@ def train_and_evaluate(train_loader: DataLoader,
 
     grl_lambda = grl_lambda if grl_lambda is not None else args.grl_lambda
 
-    model = Net(grl_lambda).to(device)
+    if args.reset_attack or model is None:
+        # Redefine the model
+        model = Net(grl_lambda).to(device)
+
     criterion = nn.MSELoss().to(device)
     criterion_bias = nn.CrossEntropyLoss().to(device)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
@@ -291,9 +295,13 @@ def main(args):
     print(df)
 
     t_main = trange(args.iterations, desc="Attack", leave=False, position=0)
+
+    # Define model as none, later it will be set and re-attacked
+    model = None
+
     for i in t_main:
         # Train network
-        _, results = train_and_evaluate(train_loader, val_loader, test_loader, device, args)
+        model, results = train_and_evaluate(train_loader, val_loader, test_loader, device, args, model=model)
 
         # Calculate biases after training
         dem_parity = abs(
@@ -324,7 +332,7 @@ def main(args):
             CArray(x_train_tensor),
             Y=CArray((y_train_tensor[:, 0] > 4).int()),
             S=s_train_tensor,
-            nb_attack=25)
+            nb_attack=args.attack_size)
 
         # incorporate adversarial points
         result_pts = torch.tensor(np.around(result_pts.astype(np.float32), decimals=3)).clamp(0.0, 1.0)
@@ -333,7 +341,6 @@ def main(args):
 
         x_train_tensor = torch.cat((x_train_tensor, result_pts))
         y_train_tensor = torch.cat((y_train_tensor, torch.tensor(result_class.reshape(-1, 1).astype(np.float32)).clamp(0, 10)))
-        print(1 + 4 * y_train_tensor)
         l_train_tensor = torch.cat((l_train_tensor, torch.tensor(labels.tondarray().reshape(-1, 1).astype(np.float32))))
         s = np.random.randint(2, size=len(result_class))
         s_train_tensor = torch.cat((s_train_tensor,  torch.tensor(np.array([s, 1 - s]).T.astype(np.float64))))
@@ -354,5 +361,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch-size', help="Size of each minibatch for the classifier", default=256, type=int)
     parser.add_argument('--show-graphs', help="Shows graph of training, etc. if true.", default=True)
     parser.add_argument('--grl-lambda', help="Gradient reversal parameter.", default=1, type=int)
+    parser.add_argument('--attack-size', help="Number of adversarial points for each attack.", default=25, type=int)
+    parser.add_argument('--reset-attack', help="Reuse the same model if False.", default=False, type=bool)
     args = parser.parse_args()
     main(args)
