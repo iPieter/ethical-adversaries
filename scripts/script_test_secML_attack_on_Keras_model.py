@@ -197,8 +197,8 @@ def attack_keras_model(X, Y, S, nb_attack=25, dmax=0.1):
 
     # take a point at random being the starting point of the attack and run the attack
     import random
-    for nb_iter in range(0, nb_attack - 1):
-        rn = random.randint(0, ts_set_secML.num_samples - 1)
+    for nb_iter in range(0, nb_attack):
+        rn = random.randint(0, ts_set_secML.num_samples)
         x0, y0 = ts_set_secML[rn, :].X, ts_set_secML[rn, :].Y,
 
         try:

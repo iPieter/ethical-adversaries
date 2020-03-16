@@ -61,15 +61,14 @@ class Net(nn.Module):
     def __init__(self, grl_lambda=100):
         super(Net, self).__init__()
         # an affine operation: y = Wx + b
-        self.grl_lambda = grl_lambda
+        self._grl_lambda = grl_lambda
         self.fc1 = nn.Linear(18, 64)
         self.fc2 = nn.Linear(64, 32)
         self.fc3 = nn.Linear(32, 64)
         self.fc4 = nn.Linear(64, 1)
-        if self.grl_lambda != 0:
+        if self._grl_lambda != 0:
             self.grl = GradientReversal(grl_lambda)
             self.fc5 = nn.Linear(64, 2)
-
         # self.grl = GradientReversal(100)
 
     def forward(self, x):
@@ -88,14 +87,12 @@ class Net(nn.Module):
         y = self.fc4(hidden)
         #y = F.dropout(y, 0.1)
 
-
-        if self.grl_lambda != 0:
+        if self._grl_lambda != 0:
             s = self.grl(hidden)
             s = self.fc5(s)
             # s = F.sigmoid(s)
             #s = F.dropout(s, 0.1)
             return y, s
-
         else:
             return y
 
@@ -138,6 +135,7 @@ def train_and_evaluate(train_loader: DataLoader,
         for x_batch, y_batch, _, s_batch in train_loader:
             x_batch = x_batch.to(device)
             y_batch = y_batch.to(device)
+            s_batch = s_batch.to(device)
 
             # zero the parameter gradients
             optimizer.zero_grad()
@@ -328,13 +326,14 @@ def main(args):
             S=s_train_tensor,
             nb_attack=25)
 
-        print(result_pts)
-
         # incorporate adversarial points
-        results_pts = torch.tensor(result_pts.astype(np.float32)).clamp(0, 1)
-        results_pts[results_pts != results_pts] = 0
-        x_train_tensor = torch.cat((x_train_tensor, results_pts))
+        result_pts = torch.tensor(np.around(result_pts.astype(np.float32), decimals=3)).clamp(0.0, 1.0)
+        result_pts[result_pts != result_pts] = 0.0
+        result_class[result_class != result_class] = 0.0
+
+        x_train_tensor = torch.cat((x_train_tensor, result_pts))
         y_train_tensor = torch.cat((y_train_tensor, torch.tensor(result_class.reshape(-1, 1).astype(np.float32)).clamp(0, 10)))
+        print(1 + 4 * y_train_tensor)
         l_train_tensor = torch.cat((l_train_tensor, torch.tensor(labels.tondarray().reshape(-1, 1).astype(np.float32))))
         s = np.random.randint(2, size=len(result_class))
         s_train_tensor = torch.cat((s_train_tensor,  torch.tensor(np.array([s, 1 - s]).T.astype(np.float64))))
