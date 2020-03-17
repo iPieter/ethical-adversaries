@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.optim as optim
-from script_test_secML_attack_on_Keras_model import transform_dataset, attack_keras_model
+from script_test_secML_attack_on_Keras_model import transform_dataset, transform_dataset_census, attack_keras_model
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, TensorDataset, DataLoader
@@ -369,6 +369,6 @@ if __name__ == '__main__':
     parser.add_argument('--grl-lambda', help="Gradient reversal parameter.", default=1, type=int)
     parser.add_argument('--attack-size', help="Number of adversarial points for each attack.", default=25, type=int)
     parser.add_argument('--reset-attack', help="Reuse the same model if False.", default=False, type=bool)
-    parser.add_argument('--dataset', help="The data set to use; values: compas or adult",default="compas",type=string)
+    parser.add_argument('--dataset', help="The data set to use; values: compas or adult",default="adult",type=str)
     args = parser.parse_args()
     main(args)

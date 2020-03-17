@@ -113,7 +113,7 @@ def transform_dataset_census(df):
     df_replace = df.replace(to_replace="?",value=np.NaN)
     df_replace.dropna(inplace=True)
 
-    if(df_replace.shape == df.shape)
+    if df_replace.shape == df.shape:
         raise AssertionError("The removal of na values failed")
 
     #transform other features
