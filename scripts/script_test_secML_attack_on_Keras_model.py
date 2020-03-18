@@ -30,7 +30,7 @@ def transform_dataset(df):
     #del df_binary['race']
     #del df_binary['is_recid']
 
-    print(df_binary)
+    #print(df_binary)
 
     # set sparse to False to return dense matrix after transformation and keep all dimensions homogeneous
     encod = preprocessing.OneHotEncoder(sparse=False)
@@ -145,9 +145,6 @@ def transform_dataset_census(df):
         encod_feature = df.iloc[:,i]
         encoded_feature = pd.get_dummies(encod_feature)
         df_binary_encoded = pd.concat([df_binary_encoded, pd.DataFrame(encoded_feature)], axis=1)
-
-    print(df_binary_encoded.shape)
-    print(df_binary_encoded.dropna().shape)
 
     return df_binary_encoded, Y, S, Y_true
 

@@ -97,6 +97,37 @@ class Net(nn.Module):
             return y
 
 
+def get_metrics(results, args, threshold):
+    "Create the metrics from an output df."
+
+    # Calculate biases after training
+    dem_parity = abs(
+        bm(results).P(pred=lambda x: x > threshold).given(race=0)
+        - bm(results).P(pred=lambda x: x > threshold).given(
+            race=1))
+
+    eq_op = abs(
+        bm(results).P(pred=lambda x: x > threshold).given(race=0, compas=True)
+        - bm(results).P(pred=lambda x: x > threshold).given(race=1, compas=True))
+
+    dem_parity_ratio = abs(
+        bm(results).P(pred=lambda x: x > threshold).given(race=0)
+        / bm(results).P(pred=lambda x: x > threshold).given(
+            race=1))
+
+    cm = ConfusionMatrix(actual_vector=(results['true'] == True).values,
+                         predict_vector=(results['pred'] > threshold).values)
+
+    result = {"DP": dem_parity,
+              "EO": eq_op,
+              "DP ratio": dem_parity_ratio,
+              "acc": cm.Overall_ACC,
+              "acc_ci_min": cm.CI95[0],
+              "acc_ci_max": cm.CI95[1],
+              "f1": cm.F1_Macro}
+
+    return result
+
 def train_and_evaluate(train_loader: DataLoader,
                        val_loader: DataLoader,
                        test_loader: DataLoader,
@@ -239,6 +270,11 @@ def main(args):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     logging.debug("using device {} for pytorch.".format(device))
 
+    # Make sure entire df is printed
+    pd.set_option('display.max_colwidth', -1)
+    pd.set_option('display.max_columns', None)
+    pd.set_option('display.width', None)
+
     if args.dataset == "compas":
         df = pd.read_csv(os.path.join("..", "data", "csv", "scikit",
                                       "compas_recidive_two_years_sanitize_age_category_jail_time_decile_score.csv"))
@@ -277,31 +313,13 @@ def main(args):
 
     global_results = []
 
+    # get the classification threshold, we use the same scale for compas so 4 instead of 0.5
+    threshold = 4 if args.dataset == 'compas' else 0.5
+
     _, results = train_and_evaluate(train_loader, val_loader, test_loader, device, args, input_shape=x_tensor.shape[1],
                                     grl_lambda=0)
 
-    threshold = 4 if args.dataset == 'compas' else 0.5
-
-    # Calculate biases after training
-    dem_parity = abs(
-        bm(results).P(pred=lambda x: x > threshold).given(race=0)
-        - bm(results).P(pred=lambda x: x > threshold).given(
-            race=1))
-
-    eq_op = abs(
-        bm(results).P(pred=lambda x: x > threshold).given(race=0, compas=True)
-        - bm(results).P(pred=lambda x: x > threshold).given(race=1, compas=True))
-
-    dem_parity_ratio = abs(
-        bm(results).P(pred=lambda x: x > threshold).given(race=0)
-        / bm(results).P(pred=lambda x: x > threshold).given(
-            race=1))
-
-    cm = ConfusionMatrix(actual_vector=(results['true'] == True).values,
-                         predict_vector=(results['pred'] > threshold).values)
-
-    result = {"DP": dem_parity, "EO": eq_op, "DP ratio": dem_parity_ratio, "acc": cm.Overall_ACC, "f1": cm.F1_Macro}
-
+    result = get_metrics(results, args, threshold)
     global_results.append(result)
 
     df = pd.DataFrame(global_results)
@@ -318,27 +336,8 @@ def main(args):
         model, results = train_and_evaluate(train_loader, val_loader, test_loader, device, args,
                                             input_shape=x_tensor.shape[1], model=model)
 
-        # Calculate biases after training
-        dem_parity = abs(
-            bm(results).P(pred=lambda x: x > threshold).given(race=0)
-            - bm(results).P(pred=lambda x: x > threshold).given(
-                race=1))
-
-        eq_op = abs(
-            bm(results).P(pred=lambda x: x > threshold).given(race=0, compas=True)
-            - bm(results).P(pred=lambda x: x > threshold).given(race=1, compas=True))
-
-        dem_parity_ratio = abs(
-            bm(results).P(pred=lambda x: x > threshold).given(race=0)
-            / bm(results).P(pred=lambda x: x > threshold).given(
-                race=1))
-
-        cm = ConfusionMatrix(actual_vector=(results['true'] == True).values,
-                             predict_vector=(results['pred'] > threshold).values)
-
-        result = {"DP": dem_parity, "EO": eq_op, "DP ratio": dem_parity_ratio, "acc": cm.Overall_ACC, "f1": cm.F1_Macro}
+        result = get_metrics(results, args, threshold)
         t_main.set_postfix(result)
-
         global_results.append(result)
 
         # Attack
@@ -368,6 +367,19 @@ def main(args):
 
         print(df)
 
+        # Finally save experimental data if a save dir is specified
+        if args.save_dir:
+            import json
+            from datetime import datetime
+            if os.path.isdir(args.save_dir):
+                timestamp: str = datetime.now().strftime("%Y_%m_%d_%Hh%Mm%Ss")
+                os.mkdir(os.path.join(args.save_dir, timestamp))
+                df.to_csv(os.path.join(args.save_dir, timestamp, "history.csv"))
+                with open(os.path.join(args.save_dir, timestamp, "settings.json"), "w") as fp:
+                    json.dump(args.__dict__, fp)
+            else:
+                raise ValueError("Path is not valid.")
+
 
 if __name__ == '__main__':
     # Define arguments for cli and run main function
@@ -380,5 +392,6 @@ if __name__ == '__main__':
     parser.add_argument('--attack-size', help="Number of adversarial points for each attack.", default=25, type=int)
     parser.add_argument('--reset-attack', help="Reuse the same model if False.", default=False, type=bool)
     parser.add_argument('--dataset', help="The data set to use; values: compas or adult", default="compas", type=str)
+    parser.add_argument('--save-dir', help="Save history and setup if specified.", default=None)
     args = parser.parse_args()
     main(args)
