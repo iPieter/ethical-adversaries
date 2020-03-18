@@ -94,24 +94,24 @@ def transform_dataset_census(df):
     df_label = df.iloc[:,-1]
 
     ##Y_true is the vector containing labels, at this point, labels (initially strings) have been transformed into integer (0 and 1) -> -5000 is now '0' and 5000+ is now '+1'
-    Y_true = label_encoder.fit_transform(df_label)
+    Y = label_encoder.fit_transform(df_label)
     #remove last column from df
     del df[df.columns[-1]]
 
-    #Y... ?
-    Y=[]
+    # Y_true is the true outcome, in this case we're not using a future predictor (vs. compas)
+    Y_true=[]
 
     #S is the protected attribute
     # could also be feature 7 (sex) or feature 13 (citizenship)
-    S=df["race"]
-    del df["race"]
+    S=df["sex"]
+    del df["sex"]
 
     #remove feature fnlwgt
     del df["fnlwgt"]
 
     #remove examples with missing values
-    df_replace = df.replace(to_replace="?",value=np.NaN)
-    df_replace.dropna(inplace=True)
+    df_replace = df.replace(to_replace="?",value=np.nan)
+    df_replace.dropna(inplace=True, axis=1)
 
     if df_replace.shape == df.shape:
         raise AssertionError("The removal of na values failed")
@@ -146,6 +146,8 @@ def transform_dataset_census(df):
         encoded_feature = pd.get_dummies(encod_feature)
         df_binary_encoded = pd.concat([df_binary_encoded, pd.DataFrame(encoded_feature)], axis=1)
 
+    print(df_binary_encoded.shape)
+    print(df_binary_encoded.dropna().shape)
 
     return df_binary_encoded, Y, S, Y_true
 

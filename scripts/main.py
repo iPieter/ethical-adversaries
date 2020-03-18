@@ -58,11 +58,11 @@ class GradientReversal(torch.nn.Module):
 
 class Net(nn.Module):
 
-    def __init__(self, grl_lambda=100):
+    def __init__(self, input_shape, grl_lambda=100):
         super(Net, self).__init__()
         # an affine operation: y = Wx + b
         self._grl_lambda = grl_lambda
-        self.fc1 = nn.Linear(18, 64)
+        self.fc1 = nn.Linear(input_shape, 64)
         self.fc2 = nn.Linear(64, 32)
         self.fc3 = nn.Linear(32, 64)
         self.fc4 = nn.Linear(64, 1)
@@ -85,13 +85,13 @@ class Net(nn.Module):
         hidden = F.dropout(hidden, 0.1)
 
         y = self.fc4(hidden)
-        #y = F.dropout(y, 0.1)
+        # y = F.dropout(y, 0.1)
 
         if self._grl_lambda != 0:
             s = self.grl(hidden)
             s = self.fc5(s)
             # s = F.sigmoid(s)
-            #s = F.dropout(s, 0.1)
+            # s = F.dropout(s, 0.1)
             return y, s
         else:
             return y
@@ -102,8 +102,9 @@ def train_and_evaluate(train_loader: DataLoader,
                        test_loader: DataLoader,
                        device,
                        args,
-                       grl_lambda = None,
-                       model = None):
+                       input_shape,
+                       grl_lambda=None,
+                       model=None):
     """
 
     :param train_loader: Pytorch-like DataLoader with training data.
@@ -119,7 +120,7 @@ def train_and_evaluate(train_loader: DataLoader,
 
     if args.reset_attack or model is None:
         # Redefine the model
-        model = Net(grl_lambda).to(device)
+        model = Net(input_shape=input_shape, grl_lambda=grl_lambda).to(device)
 
     criterion = nn.MSELoss().to(device)
     criterion_bias = nn.CrossEntropyLoss().to(device)
@@ -181,7 +182,6 @@ def train_and_evaluate(train_loader: DataLoader,
         t_prog.set_postfix({"epoch": epoch, "training_loss": training_loss,
                             "validation_loss": validation_loss}, refresh=False)  # print last metrics
 
-
     if args.show_graphs:
         plt.plot(range(len(training_losses)), training_losses)
         plt.plot(range(len(validation_losses)), validation_losses)
@@ -208,7 +208,7 @@ def train_and_evaluate(train_loader: DataLoader,
                 test_losses.append(val_loss)
                 test_results.append({"y_hat": yhat, "y_true": ytrue, "y_compas": y_test, "s": s_true})
 
-        #print({"Test loss": np.mean(test_losses)})
+        # print({"Test loss": np.mean(test_losses)})
 
     results = test_results[0]['y_hat']
     outcome = test_results[0]['y_true']
@@ -234,24 +234,29 @@ def train_and_evaluate(train_loader: DataLoader,
 
     return model, df
 
+
 def main(args):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     logging.debug("using device {} for pytorch.".format(device))
 
     if args.dataset == "compas":
         df = pd.read_csv(os.path.join("..", "data", "csv", "scikit",
-                                  "compas_recidive_two_years_sanitize_age_category_jail_time_decile_score.csv"))
-        df_binary, Y, S, Y_true = transform_dataset(df)
+                                      "compas_recidive_two_years_sanitize_age_category_jail_time_decile_score.csv"))
+        df_binary, Y, S, _ = transform_dataset(df)
+        Y = Y.to_numpy()
     elif args.dataset == "adult":
         ##load the census income data set instead of the COMPAS one
-        df = pd.read_csv(os.path.join("..", "data", "csv", "scikit","adult.csv"))
-        df_binary, Y, S, Y_true = transform_dataset_census(df)
+        df = pd.read_csv(os.path.join("..", "data", "csv", "scikit", "adult.csv"))
+        df_binary, Y, S, _ = transform_dataset_census(df)
     else:
-        raise ValueError("The value given to the --dataset parameter is not valid; try --dataset=compas or --dataset=adult")
+        raise ValueError(
+            "The value given to the --dataset parameter is not valid; try --dataset=compas or --dataset=adult")
 
     x_tensor = torch.tensor(df_binary.to_numpy().astype(np.float32))
-    y_tensor = torch.tensor(Y.to_numpy().reshape(-1, 1).astype(np.float32))
-    l_tensor = torch.tensor(Y_true.to_numpy().reshape(-1, 1).astype(np.float32))
+    y_tensor = torch.tensor(Y.reshape(-1, 1).astype(np.float32))
+    # Just duplicate y twice to maintain correct order
+    # l_tensor = torch.tensor(Y_true.to_numpy().reshape(-1, 1).astype(np.float32))
+    l_tensor = torch.tensor(Y.reshape(-1, 1).astype(np.float32))
     s_tensor = torch.tensor(preprocessing.OneHotEncoder().fit_transform(np.array(S).reshape(-1, 1)).toarray())
 
     dataset = TensorDataset(x_tensor, y_tensor, l_tensor, s_tensor)  # dataset = CustomDataset(x_tensor, y_tensor)
@@ -272,25 +277,28 @@ def main(args):
 
     global_results = []
 
-    _, results = train_and_evaluate(train_loader, val_loader, test_loader, device, args, grl_lambda=0)
+    _, results = train_and_evaluate(train_loader, val_loader, test_loader, device, args, input_shape=x_tensor.shape[1],
+                                    grl_lambda=0)
+
+    threshold = 4 if args.dataset == 'compas' else 0.5
 
     # Calculate biases after training
     dem_parity = abs(
-        bm(results).P(pred=lambda x: x > 4).given(race=0)
-        - bm(results).P(pred=lambda x: x > 4).given(
+        bm(results).P(pred=lambda x: x > threshold).given(race=0)
+        - bm(results).P(pred=lambda x: x > threshold).given(
             race=1))
 
     eq_op = abs(
-        bm(results).P(pred=lambda x: x > 4).given(race=0, compas=True)
-        - bm(results).P(pred=lambda x: x > 4).given(race=1, compas=True))
+        bm(results).P(pred=lambda x: x > threshold).given(race=0, compas=True)
+        - bm(results).P(pred=lambda x: x > threshold).given(race=1, compas=True))
 
     dem_parity_ratio = abs(
-        bm(results).P(pred=lambda x: x > 4).given(race=0)
-        / bm(results).P(pred=lambda x: x > 4).given(
+        bm(results).P(pred=lambda x: x > threshold).given(race=0)
+        / bm(results).P(pred=lambda x: x > threshold).given(
             race=1))
 
     cm = ConfusionMatrix(actual_vector=(results['true'] == True).values,
-                         predict_vector=(results['pred'] > 4).values)
+                         predict_vector=(results['pred'] > threshold).values)
 
     result = {"DP": dem_parity, "EO": eq_op, "DP ratio": dem_parity_ratio, "acc": cm.Overall_ACC, "f1": cm.F1_Macro}
 
@@ -307,26 +315,26 @@ def main(args):
 
     for i in t_main:
         # Train network
-        model, results = train_and_evaluate(train_loader, val_loader, test_loader, device, args, model=model)
+        model, results = train_and_evaluate(train_loader, val_loader, test_loader, device, args,
+                                            input_shape=x_tensor.shape[1], model=model)
 
         # Calculate biases after training
         dem_parity = abs(
-            bm(results).P(pred=lambda x: x > 4).given(race=0)
-            - bm(results).P(pred=lambda x: x > 4).given(
+            bm(results).P(pred=lambda x: x > threshold).given(race=0)
+            - bm(results).P(pred=lambda x: x > threshold).given(
                 race=1))
 
         eq_op = abs(
-            bm(results).P(pred=lambda x: x > 4).given(race=0, compas=True)
-            - bm(results).P(pred=lambda x: x > 4).given(race=1, compas=True))
+            bm(results).P(pred=lambda x: x > threshold).given(race=0, compas=True)
+            - bm(results).P(pred=lambda x: x > threshold).given(race=1, compas=True))
 
         dem_parity_ratio = abs(
-            bm(results).P(pred=lambda x: x > 4).given(race=0)
-            / bm(results).P(pred=lambda x: x > 4).given(
+            bm(results).P(pred=lambda x: x > threshold).given(race=0)
+            / bm(results).P(pred=lambda x: x > threshold).given(
                 race=1))
 
-
         cm = ConfusionMatrix(actual_vector=(results['true'] == True).values,
-                              predict_vector=(results['pred'] > 4).values)
+                             predict_vector=(results['pred'] > threshold).values)
 
         result = {"DP": dem_parity, "EO": eq_op, "DP ratio": dem_parity_ratio, "acc": cm.Overall_ACC, "f1": cm.F1_Macro}
         t_main.set_postfix(result)
@@ -336,7 +344,7 @@ def main(args):
         # Attack
         result_pts, result_class, labels = attack_keras_model(
             CArray(x_train_tensor),
-            Y=CArray((y_train_tensor[:, 0] > 4).int()),
+            Y=CArray((y_train_tensor[:, 0] > threshold).int()),
             S=s_train_tensor,
             nb_attack=args.attack_size)
 
@@ -346,18 +354,20 @@ def main(args):
         result_class[result_class != result_class] = 0.0
 
         x_train_tensor = torch.cat((x_train_tensor, result_pts))
-        y_train_tensor = torch.cat((y_train_tensor, torch.tensor(result_class.reshape(-1, 1).astype(np.float32)).clamp(0, 10)))
+        y_train_tensor = torch.cat(
+            (y_train_tensor, torch.tensor(result_class.reshape(-1, 1).astype(np.float32)).clamp(0, 10)))
         l_train_tensor = torch.cat((l_train_tensor, torch.tensor(labels.tondarray().reshape(-1, 1).astype(np.float32))))
         s = np.random.randint(2, size=len(result_class))
-        s_train_tensor = torch.cat((s_train_tensor,  torch.tensor(np.array([s, 1 - s]).T.astype(np.float64))))
+        s_train_tensor = torch.cat((s_train_tensor, torch.tensor(np.array([s, 1 - s]).T.astype(np.float64))))
 
         train_dataset = TensorDataset(x_train_tensor, y_train_tensor, l_train_tensor, s_train_tensor)
         train_loader = DataLoader(dataset=train_dataset, batch_size=args.batch_size, shuffle=True)
-        logging.debug("New training dataset has size {} (original {}).".format(len(train_loader), base_size*7))
+        logging.debug("New training dataset has size {} (original {}).".format(len(train_loader), base_size * 7))
 
         df = pd.DataFrame(global_results)
 
         print(df)
+
 
 if __name__ == '__main__':
     # Define arguments for cli and run main function
@@ -369,6 +379,6 @@ if __name__ == '__main__':
     parser.add_argument('--grl-lambda', help="Gradient reversal parameter.", default=1, type=int)
     parser.add_argument('--attack-size', help="Number of adversarial points for each attack.", default=25, type=int)
     parser.add_argument('--reset-attack', help="Reuse the same model if False.", default=False, type=bool)
-    parser.add_argument('--dataset', help="The data set to use; values: compas or adult",default="adult",type=str)
+    parser.add_argument('--dataset', help="The data set to use; values: compas or adult", default="compas", type=str)
     args = parser.parse_args()
     main(args)
