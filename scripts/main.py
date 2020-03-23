@@ -102,7 +102,7 @@ class Net(nn.Module):
             return y
 
 
-def get_metrics(results, args, threshold):
+def get_metrics(results, args, threshold, fraction):
     "Create the metrics from an output df."
 
     # Calculate biases after training
@@ -122,6 +122,8 @@ def get_metrics(results, args, threshold):
 
     cm = ConfusionMatrix(actual_vector=(results['true'] == True).values,
                          predict_vector=(results['pred'] > threshold).values)
+    cm_high_risk = ConfusionMatrix(actual_vector=(results['compas'] > 8).values,
+                         predict_vector=(results['pred'] > 8).values)
 
     result = {"DP": dem_parity,
               "EO": eq_op,
@@ -129,7 +131,13 @@ def get_metrics(results, args, threshold):
               "acc": cm.Overall_ACC,
               "acc_ci_min": cm.CI95[0],
               "acc_ci_max": cm.CI95[1],
-              "f1": cm.F1_Macro}
+              "f1": cm.F1_Macro,
+              "acc_high_risk": cm_high_risk.Overall_ACC,
+              "acc_ci_min_high_risk": cm_high_risk.CI95[0],
+              "acc_ci_max_high_risk": cm_high_risk.CI95[1],
+              "f1_high_risk": cm_high_risk.F1_Macro,
+              "adversarial_fraction": fraction
+              }
 
     return result
 
@@ -324,7 +332,7 @@ def main(args):
     _, results = train_and_evaluate(train_loader, val_loader, test_loader, device, args, input_shape=x_tensor.shape[1],
                                     grl_lambda=0)
 
-    result = get_metrics(results, args, threshold)
+    result = get_metrics(results, args, threshold, 0)
     global_results.append(result)
 
     df = pd.DataFrame(global_results)
@@ -341,7 +349,7 @@ def main(args):
         model, results = train_and_evaluate(train_loader, val_loader, test_loader, device, args,
                                             input_shape=x_tensor.shape[1], model=model)
 
-        result = get_metrics(results, args, threshold)
+        result = get_metrics(results, args, threshold, fraction=(i*args.attack_size)/(base_size * 7))
         t_main.set_postfix(result)
         global_results.append(result)
 
@@ -372,18 +380,19 @@ def main(args):
 
         print(df)
 
-        # Finally save experimental data if a save dir is specified
-        if args.save_dir:
-            import json
-            from datetime import datetime
-            if os.path.isdir(args.save_dir):
-                timestamp: str = datetime.now().strftime("%Y_%m_%d_%Hh%Mm%Ss")
-                os.mkdir(os.path.join(args.save_dir, timestamp))
-                df.to_csv(os.path.join(args.save_dir, timestamp, "history.csv"))
-                with open(os.path.join(args.save_dir, timestamp, "settings.json"), "w") as fp:
-                    json.dump(args.__dict__, fp)
-            else:
-                raise ValueError("Path is not valid.")
+    # Finally save experimental data if a save dir is specified
+    if args.save_dir:
+        import json
+        from datetime import datetime
+        if os.path.isdir(args.save_dir):
+            timestamp: str = datetime.now().strftime("%Y_%m_%d_%Hh%Mm%Ss")
+            folder: str = "{}_{}".format(args.dataset, timestamp)
+            os.mkdir(os.path.join(args.save_dir, folder))
+            df.to_csv(os.path.join(args.save_dir, folder, "history.csv"))
+            with open(os.path.join(args.save_dir, folder, "settings.json"), "w") as fp:
+                json.dump(args.__dict__, fp)
+        else:
+            raise ValueError("Path is not valid.")
 
 
 if __name__ == '__main__':
