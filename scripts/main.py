@@ -122,22 +122,32 @@ def get_metrics(results, args, threshold, fraction):
 
     cm = ConfusionMatrix(actual_vector=(results['true'] == True).values,
                          predict_vector=(results['pred'] > threshold).values)
-    cm_high_risk = ConfusionMatrix(actual_vector=(results['compas'] > 8).values,
-                         predict_vector=(results['pred'] > 8).values)
+    if args.dataset == 'compas':
+        cm_high_risk = ConfusionMatrix(actual_vector=(results['compas'] > 8).values,
+                             predict_vector=(results['pred'] > 8).values)
 
-    result = {"DP": dem_parity,
-              "EO": eq_op,
-              "DP ratio": dem_parity_ratio,
-              "acc": cm.Overall_ACC,
-              "acc_ci_min": cm.CI95[0],
-              "acc_ci_max": cm.CI95[1],
-              "f1": cm.F1_Macro,
-              "acc_high_risk": cm_high_risk.Overall_ACC,
-              "acc_ci_min_high_risk": cm_high_risk.CI95[0],
-              "acc_ci_max_high_risk": cm_high_risk.CI95[1],
-              "f1_high_risk": cm_high_risk.F1_Macro,
-              "adversarial_fraction": fraction
-              }
+        result = {"DP": dem_parity,
+                  "EO": eq_op,
+                  "DP ratio": dem_parity_ratio,
+                  "acc": cm.Overall_ACC,
+                  "acc_ci_min": cm.CI95[0],
+                  "acc_ci_max": cm.CI95[1],
+                  "f1": cm.F1_Macro,
+                  "acc_high_risk": cm_high_risk.Overall_ACC,
+                  "acc_ci_min_high_risk": cm_high_risk.CI95[0],
+                  "acc_ci_max_high_risk": cm_high_risk.CI95[1],
+                  "f1_high_risk": cm_high_risk.F1_Macro,
+                  "adversarial_fraction": fraction
+                  }
+    else:
+        result = {"DP": dem_parity,
+                  "EO": eq_op,
+                  "DP ratio": dem_parity_ratio,
+                  "acc": cm.Overall_ACC,
+                  "acc_ci_min": cm.CI95[0],
+                  "acc_ci_max": cm.CI95[1],
+                  "f1": cm.F1_Macro,
+                  }
 
     return result
 
