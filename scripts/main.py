@@ -147,6 +147,7 @@ def get_metrics(results, args, threshold, fraction):
                   "acc_ci_min": cm.CI95[0],
                   "acc_ci_max": cm.CI95[1],
                   "f1": cm.F1_Macro,
+                  "adversarial_fraction": fraction
                   }
 
     return result
