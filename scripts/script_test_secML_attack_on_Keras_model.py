@@ -30,7 +30,7 @@ def transform_dataset(df):
     #del df_binary['race']
     #del df_binary['is_recid']
 
-    #print(df_binary)
+    print(df_binary.shape)
 
     # set sparse to False to return dense matrix after transformation and keep all dimensions homogeneous
     encod = preprocessing.OneHotEncoder(sparse=False)
@@ -116,6 +116,8 @@ def transform_dataset_census(df):
     if df_replace.shape == df.shape:
         raise AssertionError("The removal of na values failed")
 
+    print(df_replace.shape)
+
     #transform other features
     #feature age to normalize
     encoded_feature = df_replace.to_numpy()[:, 0]
@@ -128,13 +130,13 @@ def transform_dataset_census(df):
 
     #feature 1 to 7 (after removal) are categorical
     for i in range(1,8):
-        encod_feature = df.iloc[:,i]
+        encod_feature = df_replace.iloc[:,i]
         encoded_feature = pd.get_dummies(encod_feature)
         df_binary_encoded = pd.concat([df_binary_encoded, pd.DataFrame(encoded_feature)], axis=1)
 
     #feature 8 and 9 are numerical
     for i in range(8,10):
-        encod_feature = df.iloc[:,i]
+        encod_feature = df_replace.iloc[:,i]
         mi = np.amin(encod_feature)
         ma = np.amax(encod_feature)
         encoded_feature = (encod_feature - mi) / (ma - mi)
@@ -142,9 +144,69 @@ def transform_dataset_census(df):
     
     #feature 10 and 11 are categorical
     for i in range(10,12):
-        encod_feature = df.iloc[:,i]
+        encod_feature = df_replace.iloc[:,i]
         encoded_feature = pd.get_dummies(encod_feature)
         df_binary_encoded = pd.concat([df_binary_encoded, pd.DataFrame(encoded_feature)], axis=1)
+
+    return df_binary_encoded, Y, S, Y_true
+
+
+def transform_dataset_credit(df):
+    """
+    For more info on the features:
+    https://archive.ics.uci.edu/ml/datasets/Statlog+%28German+Credit+Data%29
+
+    :param df: the dataset "german credit" from a space separated file
+    :return: Tuple of the transformed dataset and the labels Y and S
+    """
+
+    label_encoder = preprocessing.LabelEncoder()
+    oh_encoder = preprocessing.OneHotEncoder(sparse=False)
+
+    Y = np.array(df.iloc[:,-1] == 2)
+
+    ##Y_true is the vector containing labels, at this point, labels (initially strings) have been transformed into integer (0 and 1) -> -5000 is now '0' and 5000+ is now '+1'
+    #remove last column from df
+    del df[df.columns[-1]]
+
+    # Y_true is the true outcome, in this case we're not using a future predictor (vs. compas)
+    Y_true=[]
+
+    #S is the protected attribute
+    S=df.iloc[:,12] > 25
+    #del df["Age"]
+
+    #remove examples with missing values
+    df_replace = df.replace(to_replace="?",value=np.nan)
+    df_replace.dropna(inplace=True, axis=1)
+
+    print(df_replace.shape)
+
+    #transform other features
+    #feature age to normalize
+    encoded_feature = df_replace.to_numpy()[:, 1]
+    mi = np.amin(encoded_feature)
+    ma = np.amax(encoded_feature)
+    encoded_feature = (encoded_feature - mi) / (ma - mi)
+
+    #df_binary_encoded is the data frame containing encoded features
+    df_binary_encoded = pd.DataFrame(encoded_feature)
+
+    # categorical attributes
+    for i in [0, 2, 3, 5, 6, 8, 9, 11, 13, 14, 16, 18,19]:
+        encod_feature = df_replace.iloc[:,i]
+        encoded_feature = pd.get_dummies(encod_feature)
+        df_binary_encoded = pd.concat([df_binary_encoded, pd.DataFrame(encoded_feature)], axis=1)
+
+    # Numerical attributes
+    for i in [1, 7, 10, 15, 17]:
+        encod_feature = df_replace.iloc[:,i]
+        mi = np.amin(encod_feature)
+        ma = np.amax(encod_feature)
+        encoded_feature = (encod_feature - mi) / (ma - mi)
+        df_binary_encoded = pd.concat([df_binary_encoded, pd.DataFrame(encoded_feature)], axis=1)
+
+    print(S)
 
     return df_binary_encoded, Y, S, Y_true
 

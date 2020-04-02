@@ -9,12 +9,13 @@ verify_ssl = true
 numpy = "*"
 pandas = "*"
 scikit-learn = "*"
-secml = "*"
+secml = "==0.11"
 jupyter = "*"
 tqdm = "*"
 torch= "*"
 torchvision = "*"
 pycm = "*"
+seaborn = "*"
 
 [requires]
 python_version = "3.7"

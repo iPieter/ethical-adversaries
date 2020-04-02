@@ -1,7 +1,11 @@
 import numpy as np
 import torch
 import torch.optim as optim
-from script_test_secML_attack_on_Keras_model import transform_dataset, transform_dataset_census, attack_keras_model
+from script_test_secML_attack_on_Keras_model import \
+    transform_dataset, \
+    transform_dataset_census, \
+    transform_dataset_credit, \
+    attack_keras_model
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, TensorDataset, DataLoader
@@ -62,14 +66,13 @@ class Net(nn.Module):
         super(Net, self).__init__()
         # an affine operation: y = Wx + b
         self._grl_lambda = grl_lambda
-        self.fc1 = nn.Linear(input_shape, 64)
-        self.fc2 = nn.Linear(64, 32)
+        self.fc1 = nn.Linear(input_shape, 32)
+        self.fc2 = nn.Linear(32, 32)
         self.fc3 = nn.Linear(32, 32)
-        self.fc3a = nn.Linear(32, 64)
-        self.fc4 = nn.Linear(64, 1)
+        self.fc4 = nn.Linear(32, 1)
         if self._grl_lambda != 0:
             self.grl = GradientReversal(grl_lambda)
-            self.fc5 = nn.Linear(64, 2)
+            self.fc5 = nn.Linear(32, 2)
         # self.grl = GradientReversal(100)
 
     def forward(self, x):
@@ -82,10 +85,6 @@ class Net(nn.Module):
         hidden = F.dropout(hidden, 0.1)
 
         hidden = self.fc3(hidden)
-        hidden = F.relu(hidden)
-        hidden = F.dropout(hidden, 0.1)
-
-        hidden = self.fc3a(hidden)
         hidden = F.relu(hidden)
         hidden = F.dropout(hidden, 0.1)
 
@@ -310,13 +309,19 @@ def main(args):
         df = pd.read_csv(os.path.join("..", "data", "csv", "scikit", "adult.csv"))
         df_binary, Y, S, _ = transform_dataset_census(df)
         l_tensor = torch.tensor(Y.reshape(-1, 1).astype(np.float32))
+    elif args.dataset == "german":
+        ##load the census income data set instead of the COMPAS one
+        df = pd.read_csv(os.path.join("..", "data", "csv", "scikit", "german.data"), header=None, sep="\s")
+        df_binary, Y, S, _ = transform_dataset_credit(df)
+        l_tensor = torch.tensor(Y.reshape(-1, 1).astype(np.float32))
     else:
         raise ValueError(
             "The value given to the --dataset parameter is not valid; try --dataset=compas or --dataset=adult")
 
+    print(np.mean(Y))
+
     x_tensor = torch.tensor(df_binary.to_numpy().astype(np.float32))
     y_tensor = torch.tensor(Y.reshape(-1, 1).astype(np.float32))
-    # Just duplicate y twice to maintain correct order
     s_tensor = torch.tensor(preprocessing.OneHotEncoder().fit_transform(np.array(S).reshape(-1, 1)).toarray())
 
     dataset = TensorDataset(x_tensor, y_tensor, l_tensor, s_tensor)  # dataset = CustomDataset(x_tensor, y_tensor)
@@ -342,6 +347,8 @@ def main(args):
 
     _, results = train_and_evaluate(train_loader, val_loader, test_loader, device, args, input_shape=x_tensor.shape[1],
                                     grl_lambda=0)
+
+    print(results)
 
     result = get_metrics(results, args, threshold, 0)
     global_results.append(result)
@@ -399,9 +406,17 @@ def main(args):
             timestamp: str = datetime.now().strftime("%Y_%m_%d_%Hh%Mm%Ss")
             folder: str = "{}_{}".format(args.dataset, timestamp)
             os.mkdir(os.path.join(args.save_dir, folder))
+
+            # save history
             df.to_csv(os.path.join(args.save_dir, folder, "history.csv"))
+
+            # save experiment settings
             with open(os.path.join(args.save_dir, folder, "settings.json"), "w") as fp:
                 json.dump(args.__dict__, fp)
+
+            # save latest model
+            torch.save(model.state_dict(), os.path.join(args.save_dir, folder, "model.pt"))
+
         else:
             raise ValueError("Path is not valid.")
 
