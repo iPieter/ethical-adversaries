@@ -76,15 +76,7 @@ class Net(nn.Module):
         # self.grl = GradientReversal(100)
 
     def forward(self, x):
-        x = self.fc1(x)
-        x = F.relu(x)
-        x = F.dropout(x, 0.1)
-
-        hidden = self.fc2(x)
-        hidden = F.relu(hidden)
-        hidden = F.dropout(hidden, 0.1)
-
-        hidden = self.fc3(hidden)
+        hidden = self.fc1(x)
         hidden = F.relu(hidden)
         hidden = F.dropout(hidden, 0.1)
 
