@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.optim as optim
-from script_test_secML_attack_on_Keras_model import \
+from attack_model import \
     transform_dataset, \
     transform_dataset_census, \
     transform_dataset_credit, \
